@@ -1,0 +1,24 @@
+logging:
+  level: "INFO"
+
+embedding:
+  model: "all-MiniLM-L6-v2"
+  normalize: true
+  cache_dir: ".schema_search_cache"
+
+chunking:
+  max_tokens: 512
+  overlap_tokens: 50
+  format: "markdown"
+
+search:
+  embedding_weight: 0.6
+  bm25_weight: 0.4
+  initial_top_k: 20
+  rerank_top_k: 5
+  graph_expand_hops: 1
+
+metadata:
+  include_indices: true
+  include_foreign_keys: true
+  include_row_counts: false
