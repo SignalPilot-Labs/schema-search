@@ -1,7 +1,9 @@
 import json
 import logging
+import time
+from functools import wraps
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Callable
 
 import yaml
 from sqlalchemy.engine import Engine
@@ -13,6 +15,19 @@ from schema_search.graph_builder import GraphBuilder
 from schema_search.ranker import Ranker
 
 logger = logging.getLogger(__name__)
+
+
+def time_it(func: Callable) -> Callable:
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        start = time.time()
+        result = func(*args, **kwargs)
+        elapsed = time.time() - start
+        if isinstance(result, dict):
+            result["latency_sec"] = round(elapsed, 3)
+        return result
+
+    return wrapper
 
 
 class SchemaSearch:
@@ -33,8 +48,11 @@ class SchemaSearch:
     def _setup_logging(self):
         level = getattr(logging, self.config.get("logging", {}).get("level", "INFO"))
         logging.basicConfig(
-            level=level, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+            level=level,
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            force=True,
         )
+        logger.setLevel(level)
 
     def _load_config(self, config_path: Optional[str]) -> Dict[str, Any]:
         if config_path is None:
@@ -43,23 +61,27 @@ class SchemaSearch:
         with open(config_path) as f:
             return yaml.safe_load(f)
 
-    def index(self):
-        logger.info("Starting schema indexing")
-        self.metadata_dict = self._load_or_extract_metadata()
-        self.graph_builder.build(self.metadata_dict)
+    @time_it
+    def index(self, force: bool = False) -> Dict[str, Any]:
+        logger.info("Starting schema indexing" + (" (force)" if force else ""))
+
+        self.metadata_dict = self._load_or_extract_metadata(force)
+        self.graph_builder.build(self.metadata_dict, force)
         self.chunks = self.chunker.chunk_metadata(self.metadata_dict)
-        self.embedding_manager.load_or_generate(self.chunks)
+        self.embedding_manager.load_or_generate(self.chunks, force)
         self.ranker.build_bm25(self.chunks)
+
         logger.info(
             f"Indexing complete: {len(self.metadata_dict)} tables, {len(self.chunks)} chunks"
         )
+        return {"tables": len(self.metadata_dict), "chunks": len(self.chunks)}
 
-    def _load_or_extract_metadata(self) -> Dict[str, Dict[str, Any]]:
+    def _load_or_extract_metadata(self, force: bool) -> Dict[str, Dict[str, Any]]:
         cache_dir = Path(self.config["embedding"]["cache_dir"])
         cache_dir.mkdir(exist_ok=True)
         metadata_cache = cache_dir / "metadata.json"
 
-        if metadata_cache.exists():
+        if not force and metadata_cache.exists():
             logger.debug(f"Loading metadata from cache: {metadata_cache}")
             with open(metadata_cache) as f:
                 return json.load(f)
@@ -72,15 +94,29 @@ class SchemaSearch:
 
         return metadata_dict
 
-    def search(self, query: str) -> List[Dict[str, Any]]:
+    @time_it
+    def search(self, query: str) -> Dict[str, Any]:
         if self.embedding_manager.embeddings is None:
             raise RuntimeError("Embeddings not generated. Call index() before search()")
 
         logger.info(f"Searching: {query}")
+
         query_embedding = self.embedding_manager.encode_query(query)
-        ranked_chunks = self.ranker.rank(
-            query, query_embedding, self.embedding_manager.embeddings
-        )
+        initial_results = self._initial_ranking(query, query_embedding)
+        expanded_tables = self._expand_graph(initial_results["tables"])
+        results = self._rerank(query, query_embedding, expanded_tables)
+
+        logger.debug(f"Found {len(results)} results")
+
+        return {"results": results}
+
+    @time_it
+    def _initial_ranking(self, query: str, query_embedding) -> Dict[str, Any]:
+        embeddings = self.embedding_manager.embeddings
+        if embeddings is None:
+            raise RuntimeError("Embeddings not available")
+
+        ranked_chunks = self.ranker.rank(query, query_embedding, embeddings)
 
         initial_top_k = self.config["search"]["initial_top_k"]
         top_chunk_indices = [idx for idx, _, _, _ in ranked_chunks[:initial_top_k]]
@@ -90,12 +126,20 @@ class SchemaSearch:
             chunk = self.chunks[idx]
             initial_tables.add(chunk.table_name)
 
+        return {"tables": initial_tables, "chunks": ranked_chunks}
+
+    def _expand_graph(self, initial_tables: set) -> set:
         expanded_tables = set(initial_tables)
         hops = self.config["search"]["graph_expand_hops"]
         for table in initial_tables:
             neighbors = self.graph_builder.get_neighbors(table, hops)
             expanded_tables.update(neighbors)
+        return expanded_tables
 
+    @time_it
+    def _rerank(
+        self, query: str, query_embedding, expanded_tables: set
+    ) -> List[Dict[str, Any]]:
         table_chunks = {}
         for idx, chunk in enumerate(self.chunks):
             if chunk.table_name in expanded_tables:
@@ -123,6 +167,7 @@ class SchemaSearch:
             reranked, rerank_top_k
         )
 
+        hops = self.config["search"]["graph_expand_hops"]
         results = []
         for table_name, chunk_indices in final_table_chunk_map.items():
             max_score = max(reranked[idx][1] for idx in chunk_indices)
@@ -142,6 +187,4 @@ class SchemaSearch:
             )
 
         results.sort(key=lambda x: x["score"], reverse=True)
-        logger.info(f"Found {len(results)} results")
-
         return results

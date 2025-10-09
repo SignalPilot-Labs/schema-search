@@ -2,14 +2,18 @@ logging:
   level: "INFO"
 
 embedding:
-  model: "all-MiniLM-L6-v2"
+  model: "multi-qa-MiniLM-L6-cos-v1"
   normalize: true
+  batch_size: 32
+  show_progress: true
   cache_dir: ".schema_search_cache"
 
 chunking:
-  max_tokens: 512
+  max_tokens: 256
   overlap_tokens: 50
   format: "markdown"
+  use_llm_summary: false
+  summary_model: "claude-3-5-haiku-latest"
 
 search:
   embedding_weight: 0.6

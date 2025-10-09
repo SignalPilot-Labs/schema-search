@@ -32,12 +32,18 @@ from schema_search import SchemaSearch
 
 engine = create_engine("postgresql://user:pass@localhost/mydb")
 search = SchemaSearch(engine)
-search.index()
 
-results = search.search("where are refunds stored?")
-for result in results:
+# Index
+index_result = search.index()
+print(f"Indexed {index_result['tables']} tables in {index_result['latency_sec']}s")
+
+# Search
+search_result = search.search("where are refunds stored?")
+print(f"Found {len(search_result['results'])} results in {search_result['latency_sec']}s")
+
+for result in search_result['results']:
     print(result['table'], result['score'])
-    print(result['schema'])
+    print(result['schema'])  # Full metadata with all columns, types, constraints
     print(result['related_tables'])
 ```
 
@@ -82,6 +88,8 @@ embedding:
 chunking:
   max_tokens: 512
   overlap_tokens: 50
+  use_llm_summary: true         # Enable LLM-based semantic summarization
+  summary_model: "claude-sonnet-4-20250514"
 
 search:
   embedding_weight: 0.6
@@ -92,6 +100,32 @@ search:
 ```
 
 Custom config: `SchemaSearch(engine, config_path="config.yml")`
+
+### LLM-Based Summarization (Optional)
+
+For better semantic search on complex schemas, enable LLM-based summarization:
+
+```yaml
+chunking:
+  use_llm_summary: true
+  summary_model: "claude-sonnet-4-20250514"
+```
+
+Create a `.env` file:
+```bash
+LLM_API_KEY=your_anthropic_api_key
+LLM_BASE_URL=https://api.anthropic.com  # optional
+```
+
+Install with: `pip install -e ".[llm]"`
+
+Instead of raw markdown chunks, each table schema is summarized by Claude to focus on:
+- Business entity/concept
+- Key data stored
+- Relationships to other tables
+- Important constraints
+
+This creates a sparser, more meaningful embedding space for better search results.
 
 ## Architecture
 

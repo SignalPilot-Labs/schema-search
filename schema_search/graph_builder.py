@@ -15,10 +15,12 @@ class GraphBuilder:
         self.cache_dir.mkdir(exist_ok=True)
         self.graph = None
 
-    def build(self, metadata_dict: Dict[str, Dict[str, Any]]) -> nx.DiGraph:
+    def build(
+        self, metadata_dict: Dict[str, Dict[str, Any]], force: bool
+    ) -> nx.DiGraph:
         cache_file = self.cache_dir / "graph.pkl"
 
-        if cache_file.exists():
+        if not force and cache_file.exists():
             return self._load_from_cache(cache_file)
 
         return self._build_and_cache(metadata_dict, cache_file)

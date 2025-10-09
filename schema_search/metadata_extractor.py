@@ -23,6 +23,8 @@ class MetadataExtractor:
         foreign_keys = inspector.get_foreign_keys(table_name)
         indices = inspector.get_indexes(table_name)
         pk_constraint = inspector.get_pk_constraint(table_name)
+        unique_constraints = inspector.get_unique_constraints(table_name)
+        check_constraints = inspector.get_check_constraints(table_name)
 
         table_info = {
             "name": table_name,
@@ -30,6 +32,8 @@ class MetadataExtractor:
             "primary_keys": pk_constraint.get("constrained_columns", []),
             "foreign_keys": [],
             "indices": [],
+            "unique_constraints": [],
+            "check_constraints": [],
         }
 
         if self.config["metadata"]["include_foreign_keys"]:
@@ -37,6 +41,12 @@ class MetadataExtractor:
 
         if self.config["metadata"]["include_indices"]:
             table_info["indices"] = self._extract_indices(indices)
+            table_info["unique_constraints"] = self._extract_constraints(
+                unique_constraints
+            )
+            table_info["check_constraints"] = self._extract_constraints(
+                check_constraints
+            )
 
         return table_info
 
@@ -75,6 +85,19 @@ class MetadataExtractor:
                     "name": idx["name"],
                     "columns": idx["column_names"],
                     "unique": idx["unique"],
+                }
+            )
+        return extracted
+
+    def _extract_constraints(
+        self, constraints: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        extracted = []
+        for constraint in constraints:
+            extracted.append(
+                {
+                    "name": constraint.get("name"),
+                    "columns": constraint.get("column_names", []),
                 }
             )
         return extracted

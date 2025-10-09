@@ -29,7 +29,7 @@ def search_engine(database_url):
 
 def test_index_creation(search_engine):
     """Test that the index can be built successfully."""
-    search_engine.index()
+    stats = search_engine.index(force=True)
 
     assert len(search_engine.metadata_dict) > 0, "No tables found in database"
     assert len(search_engine.chunks) > 0, "No chunks generated"
@@ -37,13 +37,22 @@ def test_index_creation(search_engine):
         search_engine.embedding_manager.embeddings is not None
     ), "Embeddings not generated"
 
+    print(f"\nIndexing: {stats}")
+
 
 def test_search_user_information(search_engine):
     """Test searching for user-related information in the schema."""
-    search_engine.index()
+    search_engine.index(force=False)
 
-    query = "what information do we store about the user"
-    results = search_engine.search(query)
+    query = "which table has user email address?"
+    response = search_engine.search(query)
+
+    results = response["results"]
+
+    for result in results:
+        print(f"Result: {result['table']} (score: {result['score']:.3f})")
+        # print(f"Related tables: {result['related_tables']}")
+        # print("-" * 100)
 
     assert len(results) > 0, "No search results returned"
 
@@ -58,3 +67,4 @@ def test_search_user_information(search_engine):
 
     print(f"\nTop result: {top_result['table']} (score: {top_result['score']:.3f})")
     print(f"Related tables: {top_result['related_tables']}")
+    print(f"Search latency: {response['latency_sec']}s")
