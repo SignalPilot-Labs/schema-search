@@ -10,7 +10,7 @@ from sqlalchemy.engine import Engine
 
 from schema_search.schema_extractor import SchemaExtractor
 from schema_search.chunkers import Chunk, create_chunker
-from schema_search.embedding_cache import EmbeddingCache
+from schema_search.embedding_cache import create_embedding_cache
 from schema_search.graph_builder import GraphBuilder
 from schema_search.search import create_semantic_strategy, create_fuzzy_strategy
 from schema_search.types import IndexResult, SearchResult, SearchType, TableSchema
@@ -32,7 +32,13 @@ def time_it(func):
 
 
 class SchemaSearch:
-    def __init__(self, engine: Engine, config_path: Optional[str] = None):
+    def __init__(
+        self,
+        engine: Engine,
+        config_path: Optional[str] = None,
+        llm_api_key: Optional[str] = None,
+        llm_base_url: Optional[str] = None,
+    ):
         self.config = self._load_config(config_path)
         self._setup_logging()
 
@@ -42,15 +48,16 @@ class SchemaSearch:
         self.schemas: Dict[str, TableSchema] = {}
         self.chunks: List[Chunk] = []
 
+        chunking_strategy = self.config["chunking"]["strategy"]
+        if chunking_strategy == "llm" and not llm_api_key:
+            raise ValueError(
+                "LLM chunking strategy requires llm_api_key parameter. "
+                "Pass it to SchemaSearch constructor."
+            )
+
         self.schema_extractor = SchemaExtractor(engine, self.config)
-        self.chunker = create_chunker(self.config)
-        self.embedding_cache = EmbeddingCache(
-            cache_dir=cache_dir,
-            model_name=self.config["embedding"]["model"],
-            batch_size=self.config["embedding"]["batch_size"],
-            normalize=self.config["embedding"]["normalize"],
-            show_progress=self.config["embedding"]["show_progress"],
-        )
+        self.chunker = create_chunker(self.config, llm_api_key, llm_base_url)
+        self.embedding_cache = create_embedding_cache(self.config, cache_dir)
         self.graph_builder = GraphBuilder(cache_dir)
 
         self.semantic_strategy = create_semantic_strategy(

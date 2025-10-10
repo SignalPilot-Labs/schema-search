@@ -2,14 +2,15 @@ logging:
   level: "INFO"
 
 embedding:
+  location: "memory" # Options: "memory", "vectordb" (coming soon)
   model: "multi-qa-MiniLM-L6-cos-v1"
-  normalize: true
+  metric: "cosine" # Options: "cosine", "euclidean", "manhattan", "dot"
   batch_size: 32
   show_progress: false
   cache_dir: ".schema_search_cache"
 
 chunking:
-  strategy: "llm" # Options: "text", "llm"
+  strategy: "llm" # Options: "raw", "llm"
   max_tokens: 256
   overlap_tokens: 50
   model: "claude-3-5-haiku-latest"

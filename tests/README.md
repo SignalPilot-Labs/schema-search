@@ -24,15 +24,15 @@
    DATABASE_URL=postgresql://user:password@localhost:5432/your_database
    
    # Optional: for LLM-based summarization
-   LLM_API_KEY=your_anthropic_api_key
-   LLM_BASE_URL=https://api.anthropic.com
+   LLM_API_KEY=your_openai_api_key
+   LLM_BASE_URL=https://api.openai.com/v1
    ```
 
 4. (Optional) Enable LLM summarization in `config.yml`:
    ```yaml
    chunking:
-     use_llm_summary: true
-     summary_model: "claude-sonnet-4-20250514"
+     strategy: "llm"
+     model: "gpt-4o-mini"
    ```
 
 ## Running Tests

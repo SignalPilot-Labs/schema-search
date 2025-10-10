@@ -1,25 +1,27 @@
-import os
 import json
 import logging
+from typing import Optional
 
-from anthropic import Anthropic
-from dotenv import load_dotenv
+from openai import OpenAI
 
 from schema_search.chunkers.base import BaseChunker
 from schema_search.types import TableSchema
-
-load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 
 class LLMChunker(BaseChunker):
-    def __init__(self, max_tokens: int, overlap_tokens: int, model: str):
+    def __init__(
+        self,
+        max_tokens: int,
+        overlap_tokens: int,
+        model: str,
+        llm_api_key: Optional[str],
+        llm_base_url: Optional[str],
+    ):
         super().__init__(max_tokens, overlap_tokens)
         self.model = model
-        self.llm_client = Anthropic(
-            api_key=os.getenv("LLM_API_KEY"), base_url=os.getenv("LLM_BASE_URL")
-        )
+        self.llm_client = OpenAI(api_key=llm_api_key, base_url=llm_base_url)
         logger.info(f"Schema Summarizer Model: {self.model}")
 
     def _generate_content(self, table_name: str, schema: TableSchema) -> str:
@@ -36,13 +38,13 @@ Schema:
 
 Return ONLY the summary text, no preamble."""
 
-        response = self.llm_client.messages.create(
+        response = self.llm_client.chat.completions.create(
             model=self.model,
             max_tokens=500,
             messages=[{"role": "user", "content": prompt}],
         )
 
-        summary = response.content[0].text.strip()  # type: ignore
+        summary = response.choices[0].message.content.strip()  # type: ignore
         logger.debug(f"Generated LLM summary for {table_name}: {summary[:100]}...")
 
         return f"Table: {table_name}\n{summary}"

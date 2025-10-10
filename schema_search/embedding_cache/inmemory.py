@@ -7,27 +7,22 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 
 from schema_search.chunkers import Chunk
+from schema_search.embedding_cache.base import BaseEmbeddingCache
 
 logger = logging.getLogger(__name__)
 
 
-class EmbeddingCache:
+class InMemoryEmbeddingCache(BaseEmbeddingCache):
     def __init__(
         self,
         cache_dir: Path,
         model_name: str,
+        metric: str,
         batch_size: int,
-        normalize: bool,
         show_progress: bool,
     ):
-        self.cache_dir = cache_dir
-        self.cache_dir.mkdir(exist_ok=True)
-        self.model_name = model_name
-        self.batch_size = batch_size
-        self.normalize = normalize
-        self.show_progress = show_progress
+        super().__init__(cache_dir, model_name, metric, batch_size, show_progress)
         self.model: SentenceTransformer
-        self.embeddings: np.ndarray
 
     def load_or_generate(
         self, chunks: List[Chunk], force: bool, chunking_config: Dict
@@ -80,7 +75,7 @@ class EmbeddingCache:
         self.embeddings = self.model.encode(
             texts,
             batch_size=self.batch_size,
-            normalize_embeddings=self.normalize,
+            normalize_embeddings=True,
             show_progress_bar=self.show_progress,
         )
 
@@ -95,8 +90,10 @@ class EmbeddingCache:
             json.dump(cache_config, f, indent=2)
 
     def _load_model(self) -> None:
-        logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
-        self.model = SentenceTransformer(self.model_name)
+        if self.model is None:
+            logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
+            self.model = SentenceTransformer(self.model_name)
+            logger.info(f"Loaded embedding model: {self.model_name}")
 
     def encode_query(self, query: str) -> np.ndarray:
         self._load_model()
@@ -104,7 +101,21 @@ class EmbeddingCache:
         query_emb = self.model.encode(
             [query],
             batch_size=self.batch_size,
-            normalize_embeddings=self.normalize,
+            normalize_embeddings=True,
         )
 
         return query_emb
+
+    def compute_similarities(self, query_embedding: np.ndarray) -> np.ndarray:
+        if self.metric == "cosine":
+            return (self.embeddings @ query_embedding.T).flatten()
+        elif self.metric == "dot":
+            return (self.embeddings @ query_embedding.T).flatten()
+        elif self.metric == "euclidean":
+            distances = np.linalg.norm(self.embeddings - query_embedding, axis=1)
+            return -distances
+        elif self.metric == "manhattan":
+            distances = np.sum(np.abs(self.embeddings - query_embedding), axis=1)
+            return -distances
+        else:
+            raise ValueError(f"Unsupported metric: {self.metric}")

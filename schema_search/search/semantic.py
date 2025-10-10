@@ -1,4 +1,4 @@
-from typing import Dict, List, Set, Callable
+from typing import Dict, List, Set
 
 import numpy as np
 
@@ -6,22 +6,22 @@ from schema_search.search.base import BaseSearchStrategy
 from schema_search.types import TableSchema, SearchResultItem
 from schema_search.chunkers import Chunk
 from schema_search.graph_builder import GraphBuilder
-from schema_search.embedding_cache import EmbeddingCache
+from schema_search.embedding_cache import BaseEmbeddingCache
 from schema_search.rankers import BaseRanker
 
 
 class SemanticSearchStrategy(BaseSearchStrategy):
     def __init__(
         self,
-        embedding_cache: EmbeddingCache,
+        embedding_cache: BaseEmbeddingCache,
         initial_top_k: int,
         rerank_top_k: int,
-        reranker_factory: Callable[[], BaseRanker],
+        reranker: BaseRanker,
     ):
         self.embedding_cache = embedding_cache
         self.initial_top_k = initial_top_k
         self.rerank_top_k = rerank_top_k
-        self.reranker_factory = reranker_factory
+        self.reranker = reranker
 
     def search(
         self,
@@ -49,9 +49,7 @@ class SemanticSearchStrategy(BaseSearchStrategy):
     def _initial_ranking(
         self, query: str, query_embedding: np.ndarray, chunks: List[Chunk]
     ) -> Set[str]:
-        embedding_scores = (
-            self.embedding_cache.embeddings @ query_embedding.T
-        ).flatten()
+        embedding_scores = self.embedding_cache.compute_similarities(query_embedding)
         top_indices = embedding_scores.argsort()[::-1][: self.initial_top_k]
 
         initial_tables: Set[str] = set()
@@ -96,11 +94,10 @@ class SemanticSearchStrategy(BaseSearchStrategy):
         rerank_embeddings = self.embedding_cache.embeddings[rerank_chunk_indices]
         rerank_chunks = [chunks[idx] for idx in rerank_chunk_indices]
 
-        reranker = self.reranker_factory()
-        reranker.build(rerank_chunks)
-        reranked = reranker.rank(query, query_embedding, rerank_embeddings)
+        self.reranker.build(rerank_chunks)
+        reranked = self.reranker.rank(query, query_embedding, rerank_embeddings)
 
-        final_table_chunk_map = reranker.get_top_tables_from_chunks(
+        final_table_chunk_map = self.reranker.get_top_tables_from_chunks(
             reranked, self.rerank_top_k
         )
 

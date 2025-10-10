@@ -21,9 +21,27 @@ def database_url():
 
 
 @pytest.fixture(scope="module")
-def search_engine(database_url):
+def llm_config():
+    env_path = Path(__file__).parent / ".env"
+    load_dotenv(env_path)
+
+    api_key = os.getenv("LLM_API_KEY")
+    base_url = "https://api.anthropic.com/v1/"
+
+    if not api_key:
+        pytest.skip("LLM_API_KEY not set in tests/.env file")
+
+    return {"api_key": api_key, "base_url": base_url}
+
+
+@pytest.fixture(scope="module")
+def search_engine(database_url, llm_config):
     engine = create_engine(database_url)
-    search = SchemaSearch(engine)
+    search = SchemaSearch(
+        engine,
+        llm_api_key=llm_config["api_key"],
+        llm_base_url=llm_config["base_url"],
+    )
     return search
 
 
@@ -134,7 +152,7 @@ def _get_eval_data():
 
 def test_search_comparison_with_without_graph(search_engine):
     """Compare search results: semantic without graph, semantic with graph, and fuzzy."""
-    search_engine.index(force=False)
+    search_engine.index(force=True)
 
     hops_with_graph = 1
     eval_data = _get_eval_data()

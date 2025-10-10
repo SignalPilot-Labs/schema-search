@@ -29,7 +29,7 @@ def llm_config():
     load_dotenv(env_path)
 
     api_key = os.getenv("LLM_API_KEY")
-    base_url = os.getenv("LLM_BASE_URL", "https://api.anthropic.com")
+    base_url = os.getenv("LLM_BASE_URL")
 
     if not api_key:
         pytest.skip("LLM_API_KEY not set in tests/.env file")
@@ -38,9 +38,13 @@ def llm_config():
 
 
 @pytest.fixture(scope="module")
-def search_engine(database_url):
+def search_engine(database_url, llm_config):
     engine = create_engine(database_url)
-    search = SchemaSearch(engine)
+    search = SchemaSearch(
+        engine,
+        llm_api_key=llm_config["api_key"],
+        llm_base_url=llm_config["base_url"],
+    )
     search.index(force=False)
     return search
 
