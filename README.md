@@ -63,9 +63,10 @@ chunking:
   strategy: "markdown"  # or "llm"
 
 search:
-  strategy: "semantic"  # "semantic", "bm25", or "fuzzy"
+  strategy: "semantic"  # "semantic", "bm25", "fuzzy", or "hybrid"
   initial_top_k: 20
   rerank_top_k: 5
+  semantic_weight: 0.67  # For hybrid search (fuzzy_weight = 1 - semantic_weight)
 
 reranker:
   model: "cross-encoder/ms-marco-MiniLM-L-6-v2"  # Set to null to disable reranking
@@ -73,11 +74,12 @@ reranker:
 
 ### Search Strategies
 
-Schema Search supports three search strategies:
+Schema Search supports four search strategies:
 
 - **semantic**: Embedding-based similarity search using sentence transformers
 - **bm25**: Lexical search using BM25 ranking algorithm
 - **fuzzy**: String matching on table/column names using fuzzy matching
+- **hybrid**: Combines semantic and fuzzy scores (default: 67% semantic, 33% fuzzy)
 
 Each strategy performs its own initial ranking, then optionally applies CrossEncoder reranking if `reranker.model` is configured. Set `reranker.model` to `null` to disable reranking.
 
@@ -89,6 +91,9 @@ results = search.search("user_table", search_type="fuzzy")
 
 # Use BM25 for keyword-based search
 results = search.search("transactions payments", search_type="bm25")
+
+# Use hybrid for best of both worlds
+results = search.search("where are user refunds?", search_type="hybrid")
 ```
 
 ### LLM Chunking

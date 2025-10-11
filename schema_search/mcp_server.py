@@ -19,8 +19,8 @@ def schema_search(query: str, hops: int = 1, limit: int = 5) -> dict:
 
     Args:
         query: Natural language question about database schema (e.g., 'where are user refunds stored?')
-        hops: Number of foreign key hops for graph expansion. Recommended: 1 or 0
-        limit: Maximum number of table schemas to return
+        hops: Number of foreign key hops for graph expansion. Recommended: 1 or 0. Default: 1
+        limit: Maximum number of table schemas to return. Default: 5
 
     Returns:
         Dictionary containing search results (schema of the tables) and latency information

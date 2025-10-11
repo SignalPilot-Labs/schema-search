@@ -151,16 +151,16 @@ def _get_eval_data():
 
 
 def test_search_comparison_with_without_graph(search_engine):
-    """Compare search results: semantic, BM25, and fuzzy."""
+    """Compare search results: semantic, BM25, fuzzy, and hybrid."""
     search_engine.index(force=True)
 
     eval_data = _get_eval_data()
-    strategies = ["semantic", "bm25", "fuzzy"]
+    strategies = ["semantic", "bm25", "fuzzy", "hybrid"]
 
     print("\n" + "=" * 100)
     print("EVALUATION: Search Method Comparison")
     print("=" * 100)
-    print("Comparing: Semantic vs BM25 vs Fuzzy")
+    print("Comparing: Semantic vs BM25 vs Fuzzy vs Hybrid")
     print(
         "Scoring: Rank 1=5pts, Rank 2=4pts, Rank 3=3pts, Rank 4=2pts, Rank 5=1pt, Not found=0pts"
     )

@@ -1,7 +1,7 @@
 from typing import TypedDict, List, Literal, Optional
 
 
-SearchType = Literal["semantic", "fuzzy", "bm25"]
+SearchType = Literal["semantic", "fuzzy", "bm25", "hybrid"]
 
 
 class ColumnInfo(TypedDict):

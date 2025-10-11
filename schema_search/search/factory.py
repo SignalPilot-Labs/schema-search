@@ -3,6 +3,7 @@ from typing import Dict, Optional
 from schema_search.search.semantic import SemanticSearchStrategy
 from schema_search.search.fuzzy import FuzzySearchStrategy
 from schema_search.search.bm25 import BM25SearchStrategy
+from schema_search.search.hybrid import HybridSearchStrategy
 from schema_search.search.base import BaseSearchStrategy
 from schema_search.embedding_cache import BaseEmbeddingCache
 from schema_search.rankers.base import BaseRanker
@@ -40,6 +41,16 @@ def create_search_strategy(
             initial_top_k=initial_top_k,
             rerank_top_k=rerank_top_k,
             reranker=reranker,
+        )
+
+    if strategy_type == "hybrid":
+        semantic_weight = search_config.get("semantic_weight", 0.67)
+        return HybridSearchStrategy(
+            embedding_cache=embedding_cache,
+            initial_top_k=initial_top_k,
+            rerank_top_k=rerank_top_k,
+            reranker=reranker,
+            semantic_weight=semantic_weight,
         )
 
     raise ValueError(f"Unknown search strategy: {strategy_type}")
