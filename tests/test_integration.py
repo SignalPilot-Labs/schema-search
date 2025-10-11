@@ -151,99 +151,59 @@ def _get_eval_data():
 
 
 def test_search_comparison_with_without_graph(search_engine):
-    """Compare search results: semantic without graph, semantic with graph, and fuzzy."""
+    """Compare search results: semantic, BM25, and fuzzy."""
     search_engine.index(force=True)
 
-    hops_with_graph = 1
     eval_data = _get_eval_data()
+    strategies = ["semantic", "bm25", "fuzzy"]
 
     print("\n" + "=" * 100)
     print("EVALUATION: Search Method Comparison")
     print("=" * 100)
-    print("Comparing: Semantic (hops=0) vs Semantic (hops=1) vs Fuzzy")
+    print("Comparing: Semantic vs BM25 vs Fuzzy")
     print(
         "Scoring: Rank 1=5pts, Rank 2=4pts, Rank 3=3pts, Rank 4=2pts, Rank 5=1pt, Not found=0pts"
     )
     print("=" * 100)
 
-    total_scores = {"semantic_no_graph": 0, "semantic_with_graph": 0, "fuzzy": 0}
-    total_latencies = {
-        "semantic_no_graph": 0.0,
-        "semantic_with_graph": 0.0,
-        "fuzzy": 0.0,
-    }
+    total_scores = {strategy: 0 for strategy in strategies}
+    total_latencies = {strategy: 0.0 for strategy in strategies}
 
     for idx, eval_item in enumerate(eval_data, 1):
         question = eval_item["question"]
         correct_table = eval_item["correct_table"]
 
-        response_no_graph = search_engine.search(
-            question, hops=0, search_type="semantic"
-        )
-        response_with_graph = search_engine.search(
-            question, hops=hops_with_graph, search_type="semantic"
-        )
-        response_fuzzy = search_engine.search(question, search_type="fuzzy")
-
-        results_no_graph = response_no_graph["results"]
-        results_with_graph = response_with_graph["results"]
-        results_fuzzy = response_fuzzy["results"]
-
-        score_no_graph = _calculate_score(results_no_graph, correct_table)
-        score_with_graph = _calculate_score(results_with_graph, correct_table)
-        score_fuzzy = _calculate_score(results_fuzzy, correct_table)
-
-        total_scores["semantic_no_graph"] += score_no_graph
-        total_scores["semantic_with_graph"] += score_with_graph
-        total_scores["fuzzy"] += score_fuzzy
-
-        total_latencies["semantic_no_graph"] += response_no_graph["latency_sec"]
-        total_latencies["semantic_with_graph"] += response_with_graph["latency_sec"]
-        total_latencies["fuzzy"] += response_fuzzy["latency_sec"]
-
         print(f"\n--- Question {idx} ---")
         print(f"Q: {question}")
         print(f"Correct Answer: {correct_table}")
 
-        _print_results(
-            "Semantic (hops=0)",
-            results_no_graph,
-            correct_table,
-            score_no_graph,
-            response_no_graph["latency_sec"],
-        )
-        _print_results(
-            f"Semantic (hops={hops_with_graph})",
-            results_with_graph,
-            correct_table,
-            score_with_graph,
-            response_with_graph["latency_sec"],
-        )
-        _print_results(
-            "Fuzzy",
-            results_fuzzy,
-            correct_table,
-            score_fuzzy,
-            response_fuzzy["latency_sec"],
-        )
+        for strategy in strategies:
+            response = search_engine.search(question, search_type=strategy, hops=1)
+            results = response["results"]
+            score = _calculate_score(results, correct_table)
+
+            total_scores[strategy] += score
+            total_latencies[strategy] += response["latency_sec"]
+
+            _print_results(
+                strategy.capitalize(),
+                results,
+                correct_table,
+                score,
+                response["latency_sec"],
+            )
 
     print("\n" + "=" * 100)
     print("FINAL SCORES")
     print("=" * 100)
     max_possible_score = len(eval_data) * 5
     num_questions = len(eval_data)
-    print(
-        f"Semantic (hops=0):      {total_scores['semantic_no_graph']}/{max_possible_score} "
-        f"(avg latency: {total_latencies['semantic_no_graph']/num_questions:.3f}s)"
-    )
-    print(
-        f"Semantic (hops=1):      {total_scores['semantic_with_graph']}/{max_possible_score} "
-        f"(avg latency: {total_latencies['semantic_with_graph']/num_questions:.3f}s)"
-    )
-    print(
-        f"Fuzzy:                  {total_scores['fuzzy']}/{max_possible_score} "
-        f"(avg latency: {total_latencies['fuzzy']/num_questions:.3f}s)"
-    )
+
+    for strategy in strategies:
+        print(
+            f"{strategy.capitalize():10s} {total_scores[strategy]}/{max_possible_score} "
+            f"(avg latency: {total_latencies[strategy]/num_questions:.3f}s)"
+        )
     print("=" * 100)
 
     assert len(eval_data) > 0, "No evaluation data provided"

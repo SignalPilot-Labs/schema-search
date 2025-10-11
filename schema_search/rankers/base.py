@@ -2,8 +2,6 @@ from typing import Dict, List, Tuple
 from collections import defaultdict
 from abc import ABC, abstractmethod
 
-import numpy as np
-
 from schema_search.chunkers import Chunk
 
 
@@ -16,21 +14,17 @@ class BaseRanker(ABC):
         pass
 
     @abstractmethod
-    def rank(
-        self, query: str, query_embedding: np.ndarray, embeddings: np.ndarray
-    ) -> List[Tuple[int, float, float, float]]:
-        """
-        Returns: List of (chunk_idx, combined_score, embedding_score, auxiliary_score)
-        """
+    def rank(self, query: str) -> List[Tuple[int, float]]:
+        """Returns: List of (chunk_idx, score)"""
         pass
 
     def get_top_tables_from_chunks(
-        self, ranked_chunks: List[Tuple[int, float, float, float]], top_k: int
+        self, ranked_chunks: List[Tuple[int, float]], top_k: int
     ) -> Dict[str, List[int]]:
         table_to_chunk_indices: Dict[str, List[int]] = defaultdict(list)
         chunk_idx_to_score: Dict[int, float] = {}
 
-        for chunk_idx, score, emb_score, aux_score in ranked_chunks:
+        for chunk_idx, score in ranked_chunks:
             chunk = self.chunks[chunk_idx]
             table_to_chunk_indices[chunk.table_name].append(chunk_idx)
             chunk_idx_to_score[chunk_idx] = score

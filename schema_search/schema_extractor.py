@@ -26,8 +26,7 @@ class SchemaExtractor:
                 continue
 
             for table_name in inspector.get_table_names(schema=schema_name):
-                full_name = f"{schema_name}.{table_name}" if schema_name else table_name
-                schemas[full_name] = self._extract_table(
+                schemas[table_name] = self._extract_table(
                     inspector, table_name, schema_name
                 )
 

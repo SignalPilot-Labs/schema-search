@@ -12,8 +12,10 @@ from schema_search.schema_extractor import SchemaExtractor
 from schema_search.chunkers import Chunk, create_chunker
 from schema_search.embedding_cache import create_embedding_cache
 from schema_search.graph_builder import GraphBuilder
-from schema_search.search import create_semantic_strategy, create_fuzzy_strategy
+from schema_search.search import create_search_strategy
 from schema_search.types import IndexResult, SearchResult, SearchType, TableSchema
+from schema_search.rankers import create_ranker
+
 
 logger = logging.getLogger(__name__)
 
@@ -59,11 +61,9 @@ class SchemaSearch:
         self.chunker = create_chunker(self.config, llm_api_key, llm_base_url)
         self.embedding_cache = create_embedding_cache(self.config, cache_dir)
         self.graph_builder = GraphBuilder(cache_dir)
-
-        self.semantic_strategy = create_semantic_strategy(
-            self.config, self.embedding_cache
+        self.reranker = (
+            create_ranker(self.config) if self.config["reranker"].get("model") else None
         )
-        self.fuzzy_strategy = create_fuzzy_strategy()
 
     def _setup_logging(self) -> None:
         level = getattr(logging, self.config["logging"]["level"])
@@ -161,16 +161,13 @@ class SchemaSearch:
         query: str,
         hops: int = 1,
         limit: int = 5,
-        search_type: SearchType = "semantic",
+        search_type: Optional[SearchType] = None,
     ) -> SearchResult:
         logger.debug(f"Searching: {query} (hops={hops}, search_type={search_type})")
 
-        if search_type == "semantic":
-            strategy = self.semantic_strategy
-        elif search_type == "fuzzy":
-            strategy = self.fuzzy_strategy
-        else:
-            raise ValueError(f"Invalid search_type: {search_type}")
+        strategy = create_search_strategy(
+            self.config, self.embedding_cache, self.reranker, search_type
+        )
 
         results = strategy.search(
             query, self.schemas, self.chunks, self.graph_builder, hops, limit

@@ -8,6 +8,7 @@ from sentence_transformers import SentenceTransformer
 
 from schema_search.chunkers import Chunk
 from schema_search.embedding_cache.base import BaseEmbeddingCache
+from schema_search.metrics import get_metric
 
 logger = logging.getLogger(__name__)
 
@@ -107,15 +108,5 @@ class InMemoryEmbeddingCache(BaseEmbeddingCache):
         return query_emb
 
     def compute_similarities(self, query_embedding: np.ndarray) -> np.ndarray:
-        if self.metric == "cosine":
-            return (self.embeddings @ query_embedding.T).flatten()
-        elif self.metric == "dot":
-            return (self.embeddings @ query_embedding.T).flatten()
-        elif self.metric == "euclidean":
-            distances = np.linalg.norm(self.embeddings - query_embedding, axis=1)
-            return -distances
-        elif self.metric == "manhattan":
-            distances = np.sum(np.abs(self.embeddings - query_embedding), axis=1)
-            return -distances
-        else:
-            raise ValueError(f"Unsupported metric: {self.metric}")
+        metric_fn = get_metric(self.metric)
+        return metric_fn(self.embeddings, query_embedding).flatten()

@@ -1,23 +1,45 @@
-from typing import Dict
+from typing import Dict, Optional
 
 from schema_search.search.semantic import SemanticSearchStrategy
 from schema_search.search.fuzzy import FuzzySearchStrategy
+from schema_search.search.bm25 import BM25SearchStrategy
 from schema_search.search.base import BaseSearchStrategy
 from schema_search.embedding_cache import BaseEmbeddingCache
-from schema_search.rankers import create_ranker
+from schema_search.rankers.base import BaseRanker
 
 
-def create_semantic_strategy(
-    config: Dict, embedding_cache: BaseEmbeddingCache
-) -> SemanticSearchStrategy:
-    reranker = create_ranker(config)
-    return SemanticSearchStrategy(
-        embedding_cache=embedding_cache,
-        initial_top_k=config["search"]["initial_top_k"],
-        rerank_top_k=config["search"]["rerank_top_k"],
-        reranker=reranker,
-    )
+def create_search_strategy(
+    config: Dict,
+    embedding_cache: BaseEmbeddingCache,
+    reranker: Optional[BaseRanker],
+    strategy_type: Optional[str],
+) -> BaseSearchStrategy:
+    search_config = config["search"]
+    strategy_type = strategy_type or search_config["strategy"]
 
+    initial_top_k = search_config["initial_top_k"]
+    rerank_top_k = search_config["rerank_top_k"]
 
-def create_fuzzy_strategy() -> FuzzySearchStrategy:
-    return FuzzySearchStrategy()
+    if strategy_type == "semantic":
+        return SemanticSearchStrategy(
+            embedding_cache=embedding_cache,
+            initial_top_k=initial_top_k,
+            rerank_top_k=rerank_top_k,
+            reranker=reranker,
+        )
+
+    if strategy_type == "bm25":
+        return BM25SearchStrategy(
+            initial_top_k=initial_top_k,
+            rerank_top_k=rerank_top_k,
+            reranker=reranker,
+        )
+
+    if strategy_type == "fuzzy":
+        return FuzzySearchStrategy(
+            initial_top_k=initial_top_k,
+            rerank_top_k=rerank_top_k,
+            reranker=reranker,
+        )
+
+    raise ValueError(f"Unknown search strategy: {strategy_type}")

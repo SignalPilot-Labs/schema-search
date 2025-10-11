@@ -44,6 +44,9 @@ for result in results['results']:
     print(result['table'])           # "refund_transactions"
     print(result['schema'])           # Full column info, types, constraints
     print(result['related_tables'])   # ["users", "payments", "transactions"]
+
+# Override search strategy
+results = search.search("user_table", search_type="fuzzy")
 ```
 
 ## Configuration
@@ -52,16 +55,40 @@ Edit `config.yml`:
 
 ```yaml
 embedding:
-  location: "memory"  # vectordb coming soon
+  location: "memory"
   model: "multi-qa-MiniLM-L6-cos-v1"
   metric: "cosine"
 
 chunking:
-  strategy: "raw"  # or "llm"
+  strategy: "markdown"  # or "llm"
+
+search:
+  strategy: "semantic"  # "semantic", "bm25", or "fuzzy"
+  initial_top_k: 20
+  rerank_top_k: 5
 
 reranker:
-  strategy: "cross_encoder"
-  model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+  model: "cross-encoder/ms-marco-MiniLM-L-6-v2"  # Set to null to disable reranking
+```
+
+### Search Strategies
+
+Schema Search supports three search strategies:
+
+- **semantic**: Embedding-based similarity search using sentence transformers
+- **bm25**: Lexical search using BM25 ranking algorithm
+- **fuzzy**: String matching on table/column names using fuzzy matching
+
+Each strategy performs its own initial ranking, then optionally applies CrossEncoder reranking if `reranker.model` is configured. Set `reranker.model` to `null` to disable reranking.
+
+You can override the search strategy at query time:
+
+```python
+# Use fuzzy search instead of default
+results = search.search("user_table", search_type="fuzzy")
+
+# Use BM25 for keyword-based search
+results = search.search("transactions payments", search_type="bm25")
 ```
 
 ### LLM Chunking
@@ -81,10 +108,12 @@ search = SchemaSearch(
 
 ## How It Works
 
-1. Semantic search on schema chunks (in-memory embeddings)
-2. Expand results via foreign key graph (N-hops)
-3. Re-rank with CrossEncoder
-4. Return top tables with relationships
+1. **Extract schemas** from database using SQLAlchemy inspector
+2. **Chunk schemas** into digestible pieces (markdown or LLM-generated summaries)
+3. **Initial search** using selected strategy (semantic/BM25/fuzzy)
+4. **Optional reranking** with CrossEncoder to refine results
+5. **Expand via foreign keys** to find related tables (configurable hops)
+6. Return top tables with full schema and relationships
 
 Cache stored in `.schema_search_cache/`.
 

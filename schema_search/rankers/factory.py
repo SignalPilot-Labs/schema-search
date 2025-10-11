@@ -1,23 +1,11 @@
-from typing import Dict
+from typing import Dict, Optional
 
 from schema_search.rankers.base import BaseRanker
-from schema_search.rankers.bm25 import BM25Ranker
 from schema_search.rankers.cross_encoder import CrossEncoderRanker
 
 
-def create_ranker(config: Dict) -> BaseRanker:
-    reranker_config = config["reranker"]
-    reranker_strategy = reranker_config["strategy"]
-
-    if reranker_strategy == "cross_encoder":
-        return CrossEncoderRanker(
-            model_name=reranker_config["model"],
-            initial_top_k=config["search"]["initial_top_k"],
-        )
-    elif reranker_strategy == "bm25_hybrid":
-        return BM25Ranker(
-            embedding_weight=reranker_config["embedding_weight"],
-            bm25_weight=reranker_config["bm25_weight"],
-        )
-    else:
-        raise ValueError(f"Unknown reranker strategy: {reranker_strategy}")
+def create_ranker(config: Dict) -> Optional[BaseRanker]:
+    reranker_model = config["reranker"].get("model")
+    if reranker_model is None:
+        return None
+    return CrossEncoderRanker(model_name=reranker_model)
