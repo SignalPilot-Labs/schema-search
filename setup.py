@@ -13,7 +13,7 @@ setup(
         "sqlalchemy>=1.4.0",
         "sentence-transformers>=2.2.0",
         "networkx>=2.8.0",
-        "rank-bm25>=0.2.2",
+        "bm25s>=0.2.0",
         "numpy>=1.21.0",
         "pyyaml>=6.0",
         "tqdm>=4.65.0",

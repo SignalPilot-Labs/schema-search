@@ -1,7 +1,8 @@
 from typing import List
 import re
+import numpy as np
 
-from rank_bm25 import BM25Okapi
+import bm25s
 
 from schema_search.chunkers import Chunk
 
@@ -48,9 +49,12 @@ class BM25Cache:
     def build(self, chunks: List[Chunk]) -> None:
         if self.bm25 is None:
             self.tokenized_docs = [_tokenize(chunk.content) for chunk in chunks]
-            self.bm25 = BM25Okapi(self.tokenized_docs)
+            self.bm25 = bm25s.BM25()
+            self.bm25.index(self.tokenized_docs)
 
-    def get_scores(self, query: str):
-        if self.bm25 is None:
+    def get_scores(self, query: str) -> np.ndarray:
+        if self.bm25 is None or self.tokenized_docs is None:
             raise RuntimeError("BM25 cache not built. Call build() first.")
-        return self.bm25.get_scores(_tokenize(query))
+        query_tokens = _tokenize(query)
+        scores = self.bm25.get_scores(query_tokens)
+        return scores
