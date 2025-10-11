@@ -20,17 +20,16 @@ Or build schematic embeddings of your tables, store in-memory, and search in nat
 ## Install
 
 ```bash
-# PostgreSQL
+# With pip - PostgreSQL
 pip install "schema-search[postgres,mcp]"
 
-# MySQL
-pip install "schema-search[mysql,mcp]"
+# With uv - PostgreSQL (recommended)
+uv pip install "schema-search[postgres,mcp]"
 
-# Snowflake
-pip install "schema-search[snowflake,mcp]"
-
-# BigQuery
-pip install "schema-search[bigquery,mcp]"
+# Other databases
+pip install "schema-search[mysql,mcp]"      # MySQL
+pip install "schema-search[snowflake,mcp]"  # Snowflake
+pip install "schema-search[bigquery,mcp]"   # BigQuery
 ```
 
 ## MCP Server
@@ -41,16 +40,31 @@ Integrate with Claude Desktop or any MCP client.
 
 Add to your MCP config (e.g., `~/.cursor/mcp.json` or Claude Desktop config):
 
+**Using uv (Recommended):**
 ```json
 {
   "mcpServers": {
     "schema-search": {
-      "command": "path/to/schema-search-mcp", // example: /Users/<username>/opt/miniconda3/envs/<your env>/bin/schema-search-mcp",
+      "command": "uvx",
+      "args": ["schema-search[postgres,mcp]", "postgresql://user:pass@localhost/db", "optional llm_api_key", "optional llm_base_url", "optional config.yml path"]
+    }
+  }
+}
+```
+
+**Using pip:**
+```json
+{
+  "mcpServers": {
+    "schema-search": {
+      "command": "path/to/schema-search-mcp", // conda: /Users/<username>/opt/miniconda3/envs/<your env>/bin/schema-search-mcp",
       "args": ["postgresql://user:pass@localhost/db", "optional llm_api_key", "optional llm_base_url", "optional config.yml path"]
     }
   }
 }
 ```
+
+
 The LLM API key and base url are only required for LLM-generated schema summaries (`config.chunking.strategy = 'llm'`).
 
 ### CLI Usage
