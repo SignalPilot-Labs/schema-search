@@ -62,7 +62,7 @@ class SchemaSearch:
         self.embedding_cache = create_embedding_cache(self.config, cache_dir)
         self.graph_builder = GraphBuilder(cache_dir)
         self.reranker = (
-            create_ranker(self.config) if self.config["reranker"].get("model") else None
+            create_ranker(self.config) if self.config["reranker"]["model"] else None
         )
 
     def _setup_logging(self) -> None:
@@ -159,10 +159,12 @@ class SchemaSearch:
     def search(
         self,
         query: str,
-        hops: int = 1,
+        hops: Optional[int] = None,
         limit: int = 5,
         search_type: Optional[SearchType] = None,
     ) -> SearchResult:
+        if hops is None:
+            hops = int(self.config["search"]["hops"])
         logger.debug(f"Searching: {query} (hops={hops}, search_type={search_type})")
 
         strategy = create_search_strategy(

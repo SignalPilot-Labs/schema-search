@@ -44,7 +44,7 @@ def create_search_strategy(
         )
 
     if strategy_type == "hybrid":
-        semantic_weight = search_config.get("semantic_weight", 0.67)
+        semantic_weight = search_config["semantic_weight"]
         return HybridSearchStrategy(
             embedding_cache=embedding_cache,
             initial_top_k=initial_top_k,

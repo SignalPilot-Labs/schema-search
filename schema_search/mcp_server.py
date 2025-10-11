@@ -16,7 +16,7 @@ mcp = FastMCP("schema-search")
 @mcp.tool()
 def schema_search(
     query: str,
-    hops: int = 1,
+    hops: Optional[int] = None,
     limit: int = 5,
 ) -> dict:
     """Search database schema using natural language.
@@ -26,7 +26,7 @@ def schema_search(
 
     Args:
         query: Natural language question about database schema (e.g., 'where are user refunds stored?', 'tables related to payments')
-        hops: Number of foreign key relationship hops for graph expansion. Use 0 for exact matches only, 1-2 to include related tables. Default: 1
+        hops: Number of foreign key relationship hops for graph expansion. Use 0 for exact matches only, 1-2 to include related tables. If not specified, uses value from config.yml (default: 1)
         limit: Maximum number of table schemas to return in results. Default: 5
 
     Returns:

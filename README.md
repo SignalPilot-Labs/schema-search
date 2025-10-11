@@ -148,7 +148,7 @@ Tested on a database with 26 tables using the sample `config.yml`:
 - Hybrid trades some accuracy for fuzzy matching capability (38/50)
 - 10-30x faster but less accurate overall
 
-You can override the search strategy at query time:
+You can override the search strategy, hops, and limit at query time:
 
 ```python
 # Use fuzzy search instead of default
@@ -159,6 +159,12 @@ results = search.search("transactions payments", search_type="bm25")
 
 # Use hybrid for best of both worlds
 results = search.search("where are user refunds?", search_type="hybrid")
+
+# Override hops and limit
+results = search.search("user refunds", hops=2, limit=10)  # Expand 2 hops, return 10 tables
+
+# Disable graph expansion
+results = search.search("user_table", hops=0)  # Only direct matches, no foreign key traversal
 ```
 
 ### LLM Chunking
