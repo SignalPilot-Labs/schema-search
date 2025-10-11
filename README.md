@@ -188,8 +188,8 @@ search = SchemaSearch(
 1. **Extract schemas** from database using SQLAlchemy inspector
 2. **Chunk schemas** into digestible pieces (markdown or LLM-generated summaries)
 3. **Initial search** using selected strategy (semantic/BM25/fuzzy)
-4. **Optional reranking** with CrossEncoder to refine results
-5. **Expand via foreign keys** to find related tables (configurable hops)
+4. **Expand via foreign keys** to find related tables (configurable hops)
+5. **Optional reranking** with CrossEncoder to refine results
 6. Return top tables with full schema and relationships
 
 Cache stored in `.schema_search_cache/`.
