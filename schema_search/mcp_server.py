@@ -32,7 +32,7 @@ def schema_search(query: str, hops: int = 1, limit: int = 5) -> dict:
     }
 
 
-def main(
+def run_server(
     database_url: str,
     llm_api_key: Optional[str] = None,
     llm_base_url: Optional[str] = None,
@@ -54,12 +54,12 @@ def main(
     mcp.run()
 
 
-if __name__ == "__main__":
+def main():
     import sys
 
     if len(sys.argv) < 2:
         print(
-            "Usage: python -m schema_search.mcp_server <database_url> [llm_api_key] [llm_base_url] [config_path]"
+            "Usage: schema-search-mcp <database_url> [llm_api_key] [llm_base_url] [config_path]"
         )
         sys.exit(1)
 
@@ -68,4 +68,8 @@ if __name__ == "__main__":
     llm_base_url = sys.argv[3] if len(sys.argv) > 3 else None
     config_path = sys.argv[4] if len(sys.argv) > 4 else None
 
-    main(database_url, llm_api_key, llm_base_url, config_path)
+    run_server(database_url, llm_api_key, llm_base_url, config_path)
+
+
+if __name__ == "__main__":
+    main()

@@ -7,7 +7,7 @@ embedding:
   metric: "cosine" # Options: "cosine", "euclidean", "manhattan", "dot"
   batch_size: 32
   show_progress: false
-  cache_dir: ".schema_search_cache"
+  cache_dir: "/tmp/.schema_search_cache"
 
 chunking:
   strategy: "raw" # Options: "raw", "llm"

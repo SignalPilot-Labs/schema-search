@@ -46,8 +46,8 @@ Add to your MCP config (e.g., `~/.cursor/mcp.json` or Claude Desktop config):
 {
   "mcpServers": {
     "schema-search": {
-      "command": "schema-search-mcp",
-      "args": ["postgresql://user:pass@localhost/db" "optional llm_api_key" "optional llm_base_url" "optional config.yml path"]
+      "command": "path/to/schema-search-mcp" // example: /Users/<username>/opt/miniconda3/envs/<your env>/bin/schema-search-mcp",
+      "args": ["postgresql://user:pass@localhost/db", "optional llm_api_key", "optional llm_base_url", "optional config.yml path"]
     }
   }
 }
