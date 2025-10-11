@@ -13,7 +13,7 @@ chunking:
   strategy: "raw" # Options: "raw", "llm"
   max_tokens: 256
   overlap_tokens: 50
-  model: "claude-3-5-haiku-latest"
+  model: "gpt-4o-mini"
 
 search:
   # Search strategy: "semantic" (embeddings), "bm25" (BM25 lexical), "fuzzy" (fuzzy string matching), "hybrid" (semantic + bm25)

@@ -178,8 +178,8 @@ Use LLM to generate semantic summaries instead of raw schema text:
 ```python
 search = SchemaSearch(
     engine,
-    llm_api_key="sk-ant-...",
-    llm_base_url="https://api.anthropic.com"  # optional
+    llm_api_key="sk-...",
+    llm_base_url="https://api.openai.com/v1/"  # optional
 )
 ```
 
