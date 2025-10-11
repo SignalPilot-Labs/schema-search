@@ -33,7 +33,37 @@ pip install schema-search[snowflake,mcp]
 pip install schema-search[bigquery,mcp]
 ```
 
-## Use
+## MCP Server
+
+Integrate with Claude Desktop or any MCP client.
+
+### Setup
+
+Add to your MCP config (e.g., `~/.cursor/mcp.json` or Claude Desktop config):
+
+```json
+{
+  "mcpServers": {
+    "schema-search": {
+      "command": "schema-search-mcp",
+      "args": ["postgresql://user:pass@localhost/db" "optional llm_api_key" "optional llm_base_url" "optional config.yml path"]
+    }
+  }
+}
+```
+The LLM API key and base url are only required for LLM-generated schema summaries (`config.chunking.strategy = 'llm'`).
+
+### CLI Usage
+
+```bash
+schema-search-mcp "postgresql://user:pass@localhost/db"
+```
+
+Optional args: `[llm_api_key] [llm_base_url] [config_path]`
+
+The server exposes `schema_search(query, hops, limit)` for natural language schema queries.
+
+## Python Use
 
 ```python
 from sqlalchemy import create_engine
@@ -146,35 +176,6 @@ Cache stored in `.schema_search_cache/`.
 ## Performance
 
 Tested on a realistic database with 25 tables and 200+ columns. Average query latency: **<40ms**.
-
-## MCP Server
-
-Integrate with Claude Desktop or any MCP client.
-
-### Setup
-
-Add to your MCP config (e.g., `~/.cursor/mcp.json` or Claude Desktop config):
-
-```json
-{
-  "mcpServers": {
-    "schema-search": {
-      "command": "schema-search-mcp",
-      "args": ["postgresql://user:pass@localhost/db" "llm_api_key" "llm_base_url" "config.yml path"]
-    }
-  }
-}
-```
-
-### CLI Usage
-
-```bash
-schema-search-mcp "postgresql://user:pass@localhost/db"
-```
-
-Optional args: `[llm_api_key] [llm_base_url] [config_path]`
-
-The server exposes `schema_search(query, hops, limit)` for natural language schema queries.
 
 ## License
 
