@@ -1,16 +1,16 @@
-# Schema Search MCP Server
+# Schema Search
 
-Ask questions about your database in natural language. Get back the exact tables you need, with all their relationships mapped out.
+An MCP Server for Natural Language Search over Database Schemas. Find exact tables you need, with all their relationships mapped out, in milliseconds. No vector database setup required.
 
 ## Why
 
-Suppose you have 200 tables in a database. Someone asks "where are user refunds stored?" 
+You have 200 tables in your database. Someone asks "where are user refunds stored?"
 
 You could:
 - Grep through SQL files for 20 minutes
-- Ask an LLM, which will struggle to sift through 200 table schemas
+- Pass the full schema to an LLM and watch it struggle with 200 tables
 
-Or just ask the database directly.
+Or build schematic embeddings of your tables, store in-memory, and search in natural language.
 
 ## Install
 
