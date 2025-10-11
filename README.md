@@ -20,16 +20,16 @@ Or **build schematic embeddings of your tables, store in-memory, and query in na
 ## Install
 
 ```bash
-# With pip - PostgreSQL
-pip install "schema-search[postgres,mcp]"
-
 # With uv - PostgreSQL (recommended)
 uv pip install "schema-search[postgres,mcp]"
 
+# With pip - PostgreSQL
+pip install "schema-search[postgres,mcp]"
+
 # Other databases
-pip install "schema-search[mysql,mcp]"      # MySQL
-pip install "schema-search[snowflake,mcp]"  # Snowflake
-pip install "schema-search[bigquery,mcp]"   # BigQuery
+uv pip install "schema-search[mysql,mcp]"      # MySQL
+uv pip install "schema-search[snowflake,mcp]"  # Snowflake
+uv pip install "schema-search[bigquery,mcp]"   # BigQuery
 ```
 
 ## MCP Server
@@ -141,13 +141,13 @@ Tested on a real database with 26 tables and 200+ columns using the sample `conf
 
 ### With Reranker (`Alibaba-NLP/gte-reranker-modernbert-base`)
 
-- Reranking adds ~500ms latency but significantly improves accuracy
-- BM25 struggles with semantic queries (40/50)
+- Reranking adds ~500-700ms latency but significantly improves accuracy
+- Semantic achieves near-perfect accuracy (49/50)
+- Fuzzy sees the largest improvement: 23→45 (+96%)
 
 ### Without Reranker (set `reranker.model: null`):
-- Semantic is most accurate (44/50) and fastest (26ms)
-- Hybrid trades some accuracy for fuzzy matching capability (38/50)
-- 10-30x faster but less accurate overall
+- BM25 and Fuzzy are fastest at 16ms
+- Semantic is most accurate (44/50) but slower (216ms due to embedding computation)
 
 You can override the search strategy, hops, and limit at query time:
 
