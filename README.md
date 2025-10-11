@@ -104,7 +104,7 @@ search:
   semantic_weight: 0.67  # For hybrid search (fuzzy_weight = 1 - semantic_weight)
 
 reranker:
-  model: "cross-encoder/ms-marco-MiniLM-L-6-v2"  # Set to null to disable reranking
+  model: "Alibaba-NLP/gte-reranker-modernbert-base"  # Set to null to disable reranking
 ```
 
 ## Search Strategies
