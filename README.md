@@ -155,7 +155,7 @@ Add to your MCP config (e.g., `~/.cursor/mcp.json` or Claude Desktop config):
   "mcpServers": {
     "schema-search": {
       "command": "schema-search-mcp",
-      "args": ["postgresql://user:pass@localhost/db"]
+      "args": ["postgresql://user:pass@localhost/db" "llm_api_key" "llm_base_url" "config.yml path"]
     }
   }
 }
