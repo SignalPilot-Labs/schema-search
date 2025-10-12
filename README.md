@@ -34,7 +34,7 @@ uv pip install "schema-search[bigquery,mcp]"   # BigQuery
 
 ## Configuration
 
-Edit `[config.yml](config.yml)`:
+Edit `[config.yml](/config.yml)`:
 
 ```yaml
 logging:
@@ -88,7 +88,7 @@ Add to your MCP config (e.g., `~/.cursor/mcp.json` or Claude Desktop config):
   "mcpServers": {
     "schema-search": {
       "command": "uvx",
-      "args": ["schema-search[postgres,mcp]", "postgresql://user:pass@localhost/db", "optional config.yml path", "optional llm_api_key", "optional llm_base_url"]
+      "args": ["schema-search[postgres,mcp]", "postgresql://user:pass@localhost/db", "optional/path/to/config.yml", "optional llm_api_key", "optional llm_base_url"]
     }
   }
 }
@@ -100,7 +100,7 @@ Add to your MCP config (e.g., `~/.cursor/mcp.json` or Claude Desktop config):
   "mcpServers": {
     "schema-search": {
       "command": "path/to/schema-search", // conda: /Users/<username>/opt/miniconda3/envs/<your env>/bin/schema-search",
-      "args": ["postgresql://user:pass@localhost/db", "optional config.yml path", "optional llm_api_key", "optional llm_base_url"]
+      "args": ["postgresql://user:pass@localhost/db", "optional/path/to/config.yml", "optional llm_api_key", "optional llm_base_url"]
     }
   }
 }
