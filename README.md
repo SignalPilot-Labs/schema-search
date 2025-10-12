@@ -88,7 +88,13 @@ Add to your MCP config (e.g., `~/.cursor/mcp.json` or Claude Desktop config):
   "mcpServers": {
     "schema-search": {
       "command": "uvx",
-      "args": ["schema-search[postgres,mcp]", "postgresql://user:pass@localhost/db", "optional/path/to/config.yml", "optional llm_api_key", "optional llm_base_url"]
+      "args": [
+        "schema-search[postgres,mcp]", 
+        "postgresql://user:pass@localhost/db", 
+        "optional/path/to/config.yml", 
+        "optional llm_api_key", 
+        "optional llm_base_url"
+      ]
     }
   }
 }
@@ -99,8 +105,14 @@ Add to your MCP config (e.g., `~/.cursor/mcp.json` or Claude Desktop config):
 {
   "mcpServers": {
     "schema-search": {
-      "command": "path/to/schema-search", // conda: /Users/<username>/opt/miniconda3/envs/<your env>/bin/schema-search",
-      "args": ["postgresql://user:pass@localhost/db", "optional/path/to/config.yml", "optional llm_api_key", "optional llm_base_url"]
+      // conda: /Users/<username>/opt/miniconda3/envs/<your env>/bin/schema-search",
+      "command": "path/to/schema-search",
+      "args": [
+        "postgresql://user:pass@localhost/db", 
+        "optional/path/to/config.yml", 
+        "optional llm_api_key", 
+        "optional llm_base_url"
+      ]
     }
   }
 }
