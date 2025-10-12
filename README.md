@@ -96,29 +96,50 @@ for result in results['results']:
 
 # Override hops, limit, search strategy
 results = search.search("user_table", hops=0, limit=5, search_type="semantic")
+
 ```
+
+`SchemaSearch.index()` automatically detects schema changes and refreshes cached metadata, so you rarely need to force a reindex manually.
 
 ## Configuration
 
-Edit `config.yml`:
+Edit `[config.yml](config.yml)`:
 
 ```yaml
+logging:
+  level: "WARNING"
+
 embedding:
-  location: "memory"
+  location: "memory" # Options: "memory", "vectordb" (coming soon)
   model: "multi-qa-MiniLM-L6-cos-v1"
-  metric: "cosine"
+  metric: "cosine" # Options: "cosine", "euclidean", "manhattan", "dot"
+  batch_size: 32
+  show_progress: false
+  cache_dir: "/tmp/.schema_search_cache"
 
 chunking:
-  strategy: "raw"  # or "llm"
+  strategy: "raw" # Options: "raw", "llm"
+  max_tokens: 256
+  overlap_tokens: 50
+  model: "gpt-4o-mini"
 
 search:
-  strategy: "semantic"  # "semantic", "bm25", "fuzzy", or "hybrid"
+  # Search strategy: "semantic" (embeddings), "bm25" (BM25 lexical), "fuzzy" (fuzzy string matching), "hybrid" (semantic + bm25)
+  strategy: "hybrid"
   initial_top_k: 20
   rerank_top_k: 5
-  semantic_weight: 0.67  # For hybrid search (bm25_weight = 1 - semantic_weight)
+  semantic_weight: 0.67 # For hybrid search (bm25_weight = 1 - semantic_weight)
+  hops: 1 # Number of foreign key hops for graph expansion (0-2 recommended)
 
 reranker:
-  model: "Alibaba-NLP/gte-reranker-modernbert-base"  # Set to null to disable reranking
+  # CrossEncoder model for reranking. Set to null to disable reranking
+  model: null # "Alibaba-NLP/gte-reranker-modernbert-base"
+
+schema:
+  include_columns: true
+  include_indices: true
+  include_foreign_keys: true
+  include_constraints: true
 ```
 
 ## Search Strategies
