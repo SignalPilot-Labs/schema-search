@@ -34,7 +34,7 @@ uv pip install "schema-search[bigquery,mcp]"   # BigQuery
 
 ## Configuration
 
-Edit `[config.yml](/config.yml)`:
+Edit [`config.yml`](https://github.com/Neehan/schema-search/blob/main/config.yml):
 
 ```yaml
 logging:
