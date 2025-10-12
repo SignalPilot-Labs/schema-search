@@ -16,17 +16,20 @@ class Chunk:
 
 
 class BaseChunker(ABC):
-    def __init__(self, max_tokens: int, overlap_tokens: int):
+    def __init__(self, max_tokens: int, overlap_tokens: int, show_progress: bool = False):
         self.max_tokens = max_tokens
         self.overlap_tokens = overlap_tokens
+        self.show_progress = show_progress
 
     def chunk_schemas(self, schemas: Dict[str, TableSchema]) -> List[Chunk]:
         chunks: List[Chunk] = []
         chunk_id = 0
 
-        for table_name, schema in tqdm(
-            schemas.items(), desc="Chunking tables", unit="table"
-        ):
+        iterator = schemas.items()
+        if self.show_progress:
+            iterator = tqdm(iterator, desc="Chunking tables", unit="table")
+
+        for table_name, schema in iterator:
             table_chunks = self._chunk_table(table_name, schema, chunk_id)
             chunks.extend(table_chunks)
             chunk_id += len(table_chunks)

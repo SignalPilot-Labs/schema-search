@@ -1,10 +1,13 @@
 from typing import List
 import re
+import logging
 import numpy as np
 
 import bm25s
 
 from schema_search.chunkers import Chunk
+
+logging.getLogger("bm25s").setLevel(logging.WARNING)
 
 
 def light_stem(token: str) -> str:

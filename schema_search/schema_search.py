@@ -45,8 +45,10 @@ class SchemaSearch:
         self.config = self._load_config(config_path)
         self._setup_logging()
 
-        cache_dir = Path(self.config["embedding"]["cache_dir"])
-        cache_dir.mkdir(exist_ok=True)
+        base_cache_dir = Path(self.config["embedding"]["cache_dir"])
+        db_name = engine.url.database or "default"
+        cache_dir = base_cache_dir / db_name
+        cache_dir.mkdir(parents=True, exist_ok=True)
 
         self.schemas: Dict[str, TableSchema] = {}
         self.chunks: List[Chunk] = []
@@ -103,8 +105,7 @@ class SchemaSearch:
         }
 
     def _load_or_extract_schemas(self, force: bool) -> Dict[str, TableSchema]:
-        cache_dir = Path(self.config["embedding"]["cache_dir"])
-        schema_cache = cache_dir / "metadata.json"
+        schema_cache = self.cache_dir / "metadata.json"
 
         if not force and schema_cache.exists():
             logger.debug(f"Loading schemas from cache: {schema_cache}")
@@ -122,8 +123,7 @@ class SchemaSearch:
     def _load_or_generate_chunks(
         self, schemas: Dict[str, TableSchema], force: bool
     ) -> List[Chunk]:
-        cache_dir = Path(self.config["embedding"]["cache_dir"])
-        chunks_cache = cache_dir / "chunk_metadata.json"
+        chunks_cache = self.cache_dir / "chunk_metadata.json"
 
         if not force and chunks_cache.exists():
             logger.info(f"Loading chunks from cache: {chunks_cache}")

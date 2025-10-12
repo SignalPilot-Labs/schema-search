@@ -133,21 +133,24 @@ Schema Search supports four search strategies:
 Each strategy performs its own initial ranking, then optionally applies CrossEncoder reranking if `reranker.model` is configured. Set `reranker.model` to `null` to disable reranking.
 
 ## Performance Comparison
-Embedding model ~90 MB, reranker ~155 MB (if enabled). Actual process memory depends on Python runtime and dependencies.
+We [benchmarked](/tests/test_spider_eval.py) on the Spider dataset (1,234 train queries across 18 databases) using the default configuration.  
 
-![Strategy Comparison](img/strategy_comparison.png)
+**Memory:** The embedding model requires ~90 MB and the optional reranker adds ~155 MB. Actual process memory depends on your Python runtime.
 
-Tested on a real database with 26 tables and 200+ columns using the sample `config.yml`.
+### Without Reranker (`reranker.model: null`)
+![Without Reranker](img/spider_benchmark_without_reranker.png)
+- **Indexing:** 0.22s ± 0.08s per database (18 total).
+- **Accuracy:** Hybrid leads with Recall@1 62% / MRR 0.93; Semantic follows at Recall@1 58% / MRR 0.89.
+- **Latency:** BM25 and Fuzzy return in ~5ms; Semantic spends ~15ms; Hybrid (semantic + fuzzy) averages 52ms.
+- **Fuzzy baseline:** Recall@1 22%, highlighting the need for semantic signals on natural-language queries.
 
 ### With Reranker (`Alibaba-NLP/gte-reranker-modernbert-base`)
+![With Reranker](img/spider_benchmark_with_reranker.png)
+- **Indexing:** 0.25s ± 0.05s per database (same 18 DBs).
+- **Accuracy:** All strategies converge around Recall@1 62% and MRR ≈ 0.92; Fuzzy jumps from 51% → 92% MRR.
+- **Latency trade-off:** Extra CrossEncoder pass lifts per-query latency to ~0.18–0.29s depending on strategy.
+- **Recommendation:** Enable the reranker when accuracy matters most; disable it for ultra-low-latency lookups.
 
-- Reranking adds ~500-700ms latency but significantly improves accuracy
-- Semantic achieves near-perfect accuracy (49/50)
-- Fuzzy sees the largest improvement: 23→45 (+96%)
-
-### Without Reranker (set `reranker.model: null`):
-- BM25 and Fuzzy are fastest at 16ms
-- Semantic is most accurate (44/50) but slower (216ms due to embedding computation)
 
 You can override the search strategy, hops, and limit at query time:
 

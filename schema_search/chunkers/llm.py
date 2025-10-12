@@ -18,8 +18,9 @@ class LLMChunker(BaseChunker):
         model: str,
         llm_api_key: Optional[str],
         llm_base_url: Optional[str],
+        show_progress: bool = False,
     ):
-        super().__init__(max_tokens, overlap_tokens)
+        super().__init__(max_tokens, overlap_tokens, show_progress)
         self.model = model
         self.llm_client = OpenAI(api_key=llm_api_key, base_url=llm_base_url)
         logger.info(f"Schema Summarizer Model: {self.model}")

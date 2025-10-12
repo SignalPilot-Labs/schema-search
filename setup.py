@@ -28,6 +28,7 @@ setup(
             "pytest>=7.0.0",
             "python-dotenv>=1.0.0",
             "psutil>=5.9.0",
+            "datasets>=2.0.0",
         ],
         "postgres": [
             "psycopg2-binary>=2.9.0",
