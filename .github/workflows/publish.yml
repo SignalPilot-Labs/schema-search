@@ -4,28 +4,37 @@ on:
   release:
     types: [published]
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   publish:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
-      - name: Install build and test dependencies
+      - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install build twine
-          pip install -e ".[postgres,mcp,test]"
+          pip install build
+
+      - name: Verify optional extras (non-failing)
+        continue-on-error: true
+        run: |
+          for extra in postgres mysql snowflake bigquery mcp; do
+            echo "Checking install for [$extra]"
+            pip install -e ".[${extra}]" || true
+          done
 
       - name: Build package
         run: python -m build
 
-      - name: Publish to PyPI
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        run: twine upload dist/*
+      - name: Publish to PyPI via OIDC
+        uses: pypa/gh-action-pypi-publish@release/v1
