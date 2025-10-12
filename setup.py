@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="schema-search",
-    version="0.1.4",
+    version="0.1.5",
     description="Natural language search for database schemas with graph-aware semantic retrieval",
     author="",
     long_description=open("README.md").read(),
@@ -49,14 +49,12 @@ setup(
             "schema-search=schema_search.mcp_server:main",
         ],
     },
-    python_requires=">=3.8",
+    python_requires=">=3.10",
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
     ],
