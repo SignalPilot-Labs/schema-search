@@ -112,7 +112,7 @@ The LLM API key and base url are only required if you use LLM-generated schema s
 ### CLI Usage
 
 ```bash
-schema-search "postgresql://user:pass@localhost/db"
+schema-search "postgresql://user:pass@localhost/db" "optional/path/to/config.yml"
 ```
 
 Optional args: `[config_path] [llm_api_key] [llm_base_url]`
