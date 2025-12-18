@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="schema-search",
-    version="0.1.10",
+    version="1.0.11",
     description="Natural language database schema search with graph-aware semantic retrieval",
     author="Adib Hasan",
     long_description=open("README.md").read(),
