@@ -172,7 +172,7 @@ results = sc.search("where are user refunds stored?")
 # Default output is markdown - render with str()
 print(results)  # Formatted markdown with schemas, relationships, and scores
 
-# Access as dictionary for JSON output
+# Access underlying data as dictionary
 result_dict = results.to_dict()
 for result in result_dict['results']:
     print(result['table'])           # "refund_transactions"

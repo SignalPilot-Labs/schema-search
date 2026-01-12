@@ -130,7 +130,16 @@ class MarkdownRenderer(BaseRenderer):
         return "\n".join(lines)
 
     def _render_column(self, column: ColumnInfo) -> str:
-        """Render a single column."""
+        """
+        Render a single column.
+
+        Args:
+            column: ColumnInfo with required fields (name, type, nullable) and optional default.
+                   All required fields must be present and non-None.
+
+        Returns:
+            Formatted markdown string for the column
+        """
         nullable = "NULL" if column["nullable"] else "NOT NULL"
         default = f" DEFAULT {column['default']}" if column.get("default") else ""
         return f"  - **{column['name']}**: `{column['type']}` {nullable}{default}"
