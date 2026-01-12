@@ -158,11 +158,6 @@ from schema_search import SchemaSearch
 # PostgreSQL
 engine = create_engine("postgresql://user:pass@localhost/db")
 
-# Databricks (catalog required, schema optional)
-# engine = create_engine(
-#     f"databricks://token:{token}@{host}?http_path={http_path}&catalog={catalog}",
-#     connect_args={"user_agent_entry": "schema-search"}
-# )
 
 sc = SchemaSearch(
   engine=engine,
