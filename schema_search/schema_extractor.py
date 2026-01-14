@@ -8,6 +8,7 @@ from schema_search.types import (
     ForeignKeyInfo,
     IndexInfo,
     ConstraintInfo,
+    CheckConstraintInfo,
 )
 
 
@@ -80,7 +81,7 @@ class SchemaExtractor:
                 else None
             ),
             "check_constraints": (
-                self._extract_constraints(
+                self._extract_check_constraints(
                     inspector.get_check_constraints(table_name, schema=schema_name)
                 )
                 if self.config["schema"]["include_constraints"]
@@ -130,6 +131,17 @@ class SchemaExtractor:
             {
                 "name": constraint["name"],
                 "columns": constraint["column_names"],
+            }
+            for constraint in constraints
+        ]
+
+    def _extract_check_constraints(
+        self, constraints: List[Dict[str, Any]]
+    ) -> List[CheckConstraintInfo]:
+        return [
+            {
+                "name": constraint["name"],
+                "sqltext": constraint["sqltext"],
             }
             for constraint in constraints
         ]

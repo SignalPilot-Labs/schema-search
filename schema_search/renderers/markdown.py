@@ -123,8 +123,7 @@ class MarkdownRenderer(BaseRenderer):
             lines.append("**Check Constraints**:")
             for constraint in check_constraints:
                 name = constraint.get("name") or "unnamed"
-                cols = ", ".join(constraint["columns"])
-                lines.append(f"  - {name}: ({cols})")
+                lines.append(f"  - {name}: `{constraint['sqltext']}`")
             lines.append("")
 
         return "\n".join(lines)

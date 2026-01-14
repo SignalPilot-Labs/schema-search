@@ -30,6 +30,11 @@ class ConstraintInfo(TypedDict):
     columns: List[str]
 
 
+class CheckConstraintInfo(TypedDict):
+    name: Optional[str]
+    sqltext: str
+
+
 class TableSchema(TypedDict):
     name: str
     primary_keys: List[str]
@@ -37,7 +42,7 @@ class TableSchema(TypedDict):
     foreign_keys: Optional[List[ForeignKeyInfo]]
     indices: Optional[List[IndexInfo]]
     unique_constraints: Optional[List[ConstraintInfo]]
-    check_constraints: Optional[List[ConstraintInfo]]
+    check_constraints: Optional[List[CheckConstraintInfo]]
 
 
 class IndexResult(TypedDict):
