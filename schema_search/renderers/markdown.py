@@ -104,9 +104,10 @@ class MarkdownRenderer(BaseRenderer):
         if indices:
             lines.append("**Indices**:")
             for idx in indices:
-                unique = "UNIQUE " if idx["unique"] else ""
-                cols = ", ".join(idx["columns"])
-                lines.append(f"  - {unique}{idx['name']}: ({cols})")
+                if idx["name"]:
+                    unique = "UNIQUE " if idx["unique"] else ""
+                    cols = ", ".join(idx["columns"])
+                    lines.append(f"  - {unique}{idx['name']}: ({cols})")
             lines.append("")
 
         # Unique constraints

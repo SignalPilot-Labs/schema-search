@@ -18,7 +18,7 @@ class GraphBuilder:
     def __init__(self, cache_dir: Path):
         self.cache_dir = cache_dir
         self.cache_dir.mkdir(exist_ok=True)
-        self.graph: nx.DiGraph
+        self.graph: nx.DiGraph = nx.DiGraph()
 
     def build(self, schemas: DBSchema, force: bool) -> None:
         cache_file = self.cache_dir / "graph.pkl"

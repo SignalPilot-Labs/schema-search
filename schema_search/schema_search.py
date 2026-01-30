@@ -11,7 +11,7 @@ from schema_search.extractors.factory import create_extractor
 from schema_search.graph_builder import GraphBuilder
 from schema_search.rankers.factory import create_ranker
 from schema_search.search.factory import create_search_strategy
-from schema_search.types import Chunk, DBSchema, IndexResult, SearchResult, SearchType
+from schema_search.types import Chunk, DBSchema, IndexResult, SearchResult, SearchResultItem, SearchType
 from schema_search.utils.cache import load_chunks, load_schema, save_chunks, save_schema, schema_changed
 from schema_search.utils.config import load_config, validate_dependencies
 from schema_search.utils.utils import setup_logging, time_it
@@ -198,6 +198,11 @@ class SchemaSearch:
         Returns:
             SearchResult with matching tables
         """
+        if not self.chunks:
+            raise ValueError("Must call index() before search()")
+        if not query or not query.strip():
+            raise ValueError("Query cannot be empty")
+
         if hops is None:
             hops = int(self.config["search"]["hops"])
         if limit is None:
@@ -214,13 +219,16 @@ class SchemaSearch:
         if resolved_type in ["bm25", "hybrid"]:
             self._ensure_bm25_built()
 
-        search_chunks = self._filter_chunks(catalogs, schemas)
-
         strategy = self._get_search_strategy(resolved_type)
 
+        # Search on all chunks (indices must match BM25/embedding cache)
         results = strategy.search(
-            query, self.schemas, search_chunks, self.graph_builder, hops, limit
+            query, self.schemas, self.chunks, self.graph_builder, hops, limit
         )
+
+        # Filter results after scoring
+        if catalogs or schemas:
+            results = self._filter_results(results, catalogs, schemas)
 
         logger.debug(f"Found {len(results)} results")
 
@@ -230,19 +238,23 @@ class SchemaSearch:
             output_format=resolved_format
         )
 
-    def _filter_chunks(
+    def _filter_results(
         self,
+        results: List[SearchResultItem],
         catalogs: Optional[List[str]],
         schemas: Optional[List[str]],
-    ) -> List[Chunk]:
-        """Filter chunks by catalog and/or schema."""
-        if not catalogs and not schemas:
-            return self.chunks
+    ) -> List[SearchResultItem]:
+        """Filter search results by catalog and/or schema."""
+        filtered = []
+        for result in results:
+            table_key = result["table"]
+            catalog, schema_name = Chunk.parse_schema_key(table_key.rsplit(".", 1)[0])
 
-        filtered = self.chunks
-        if catalogs:
-            filtered = [c for c in filtered if c.catalog in catalogs]
-        if schemas:
-            filtered = [c for c in filtered if c.schema_name in schemas]
+            if catalogs and catalog not in catalogs:
+                continue
+            if schemas and schema_name not in schemas:
+                continue
+
+            filtered.append(result)
 
         return filtered

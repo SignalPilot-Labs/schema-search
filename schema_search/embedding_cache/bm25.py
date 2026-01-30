@@ -50,6 +50,8 @@ class BM25Cache:
         self.tokenized_docs = None
 
     def build(self, chunks: List[Chunk]) -> None:
+        if not chunks:
+            raise ValueError("Cannot build BM25 index on empty chunk list")
         if self.bm25 is None:
             self.tokenized_docs = [_tokenize(chunk.content) for chunk in chunks]
             self.bm25 = bm25s.BM25()

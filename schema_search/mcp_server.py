@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import logging
-from typing import Optional
+from typing import List, Optional
 
 from fastmcp import FastMCP
 from sqlalchemy import create_engine
@@ -16,6 +16,8 @@ mcp = FastMCP("schema-search")
 @mcp.tool()
 def schema_search(
     query: str,
+    schemas: Optional[List[str]] = None,
+    catalogs: Optional[List[str]] = None,
     limit: Optional[int] = None,
 ) -> str:
     """Search database schema using natural language.
@@ -25,6 +27,8 @@ def schema_search(
 
     Args:
         query: Natural language question about database schema (e.g., 'tables related to payments')
+        schemas: Optional list of schema names to filter results (e.g., ['public', 'sales']).
+        catalogs: Optional list of catalog names to filter results (Databricks only).
         limit: Maximum number of table schemas to return in results. Uses config default if not specified.
 
     Returns:
@@ -33,8 +37,30 @@ def schema_search(
     if limit is None:
         limit = int(mcp.search_engine.config["output"]["limit"])  # type: ignore
 
-    search_result = mcp.search_engine.search(query, limit=limit)  # type: ignore
+    search_result = mcp.search_engine.search(  # type: ignore
+        query, catalogs=catalogs, schemas=schemas, limit=limit
+    )
     return str(search_result)
+
+
+@mcp.tool()
+def get_schema(
+    schemas: Optional[List[str]] = None,
+    catalogs: Optional[List[str]] = None,
+) -> dict:
+    """Get the full database schema structure.
+
+    Returns the complete schema metadata including all tables, columns, foreign keys,
+    and indices. Useful for understanding the database structure without searching.
+
+    Args:
+        schemas: Optional list of schema names to filter (e.g., ['public', 'sales']).
+        catalogs: Optional list of catalog names to filter (Databricks only).
+
+    Returns:
+        Schema structure as nested dict: {schema_key: {table_name: TableSchema}}.
+    """
+    return mcp.search_engine.get_schema(catalogs=catalogs, schemas=schemas)  # type: ignore
 
 
 def run_server(

@@ -52,7 +52,7 @@ class FuzzySearchStrategy(BaseSearchStrategy):
     def _build_searchable_text(self, table_name: str, schema: TableSchema) -> str:
         parts = [table_name]
 
-        indices = schema.get("indices")
+        indices = schema["indices"]
         if indices:
             for idx in indices:
                 if idx["name"]:

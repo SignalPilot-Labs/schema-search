@@ -21,7 +21,7 @@ class ForeignKeyInfo(TypedDict):
 
 
 class IndexInfo(TypedDict):
-    name: str
+    name: Optional[str]
     columns: List[str]
     unique: bool
 

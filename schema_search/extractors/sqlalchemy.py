@@ -108,11 +108,11 @@ class SQLAlchemyExtractor(BaseExtractor):
     def _extract_indices(self, indices: List[Dict[str, Any]]) -> List[IndexInfo]:
         return [
             {
-                "name": idx["name"],
+                "name": idx["name"] or f"idx_{i}",
                 "columns": idx["column_names"],
                 "unique": idx["unique"],
             }
-            for idx in indices
+            for i, idx in enumerate(indices)
         ]
 
     def _extract_constraints(
