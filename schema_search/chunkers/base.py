@@ -1,18 +1,22 @@
-from typing import Dict, List
+from typing import List
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 
 from tqdm import tqdm
 
-from schema_search.types import TableSchema
+from schema_search.types import TableSchema, DBSchema
 
 
 @dataclass
 class Chunk:
+    schema_name: str
     table_name: str
     content: str
-    chunk_id: int
+    chunk_id: str
     token_count: int
+
+    def qualified_name(self) -> str:
+        return f"{self.schema_name}.{self.table_name}"
 
 
 class BaseChunker(ABC):
@@ -21,18 +25,22 @@ class BaseChunker(ABC):
         self.overlap_tokens = overlap_tokens
         self.show_progress = show_progress
 
-    def chunk_schemas(self, schemas: Dict[str, TableSchema]) -> List[Chunk]:
+    def chunk_schemas(self, schemas: DBSchema) -> List[Chunk]:
         chunks: List[Chunk] = []
-        chunk_id = 0
 
-        iterator = schemas.items()
+        tables = [
+            (schema_name, table_name, table_schema)
+            for schema_name, tables in schemas.items()
+            for table_name, table_schema in tables.items()
+        ]
+
+        iterator = tables
         if self.show_progress:
-            iterator = tqdm(iterator, desc="Chunking tables", unit="table")
+            iterator = tqdm(tables, desc="Chunking tables", unit="table")
 
-        for table_name, schema in iterator:
-            table_chunks = self._chunk_table(table_name, schema, chunk_id)
+        for schema_name, table_name, table_schema in iterator:
+            table_chunks = self._chunk_table(schema_name, table_name, table_schema)
             chunks.extend(table_chunks)
-            chunk_id += len(table_chunks)
 
         return chunks
 
@@ -41,18 +49,18 @@ class BaseChunker(ABC):
         pass
 
     def _chunk_table(
-        self, table_name: str, schema: TableSchema, start_id: int
+        self, schema_name: str, table_name: str, table_schema: TableSchema
     ) -> List[Chunk]:
-        content = self._generate_content(table_name, schema)
+        content = self._generate_content(table_name, table_schema)
         lines = content.split("\n")
 
-        header = f"Table: {table_name}"
+        header = f"Schema: {schema_name}\nTable: {table_name}"
         header_tokens = self._estimate_tokens(header)
 
         chunks: List[Chunk] = []
         current_chunk_lines = [header]
         current_tokens = header_tokens
-        chunk_id = start_id
+        chunk_idx = 0
 
         for line in lines[1:]:
             line_tokens = self._estimate_tokens(line)
@@ -64,13 +72,14 @@ class BaseChunker(ABC):
                 chunk_content = "\n".join(current_chunk_lines)
                 chunks.append(
                     Chunk(
+                        schema_name=schema_name,
                         table_name=table_name,
                         content=chunk_content,
-                        chunk_id=chunk_id,
+                        chunk_id=f"{schema_name}.{table_name}.{chunk_idx}",
                         token_count=current_tokens,
                     )
                 )
-                chunk_id += 1
+                chunk_idx += 1
 
                 current_chunk_lines = [header]
                 current_tokens = header_tokens
@@ -82,9 +91,10 @@ class BaseChunker(ABC):
             chunk_content = "\n".join(current_chunk_lines)
             chunks.append(
                 Chunk(
+                    schema_name=schema_name,
                     table_name=table_name,
                     content=chunk_content,
-                    chunk_id=chunk_id,
+                    chunk_id=f"{schema_name}.{table_name}.{chunk_idx}",
                     token_count=current_tokens,
                 )
             )

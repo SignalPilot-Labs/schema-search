@@ -94,7 +94,9 @@ def test_search_user_information(search_engine):
 def _calculate_score(results, correct_table):
     """Calculate score based on position. Top=5, 2nd=4, 3rd=3, 4th=2, 5th=1, not found=0"""
     for position, result in enumerate(results[:5], 1):
-        if result["table"] == correct_table:
+        # result["table"] is now "schema.table" format
+        table_name = result["table"].split(".")[-1]
+        if table_name == correct_table:
             return 6 - position
     return 0
 

@@ -3,7 +3,7 @@ import logging
 
 from schema_search.chunkers import Chunk
 from schema_search.rankers.base import BaseRanker
-from schema_search.utils.lazy_import import lazy_import_check
+from schema_search.utils.utils import lazy_import_check
 
 if TYPE_CHECKING:
     from sentence_transformers import CrossEncoder

@@ -1,4 +1,4 @@
-from typing import TypedDict, List, Literal, Optional, Union
+from typing import TypedDict, List, Literal, Optional, Dict
 from dataclasses import dataclass, field
 
 
@@ -15,6 +15,7 @@ class ColumnInfo(TypedDict):
 
 class ForeignKeyInfo(TypedDict):
     constrained_columns: List[str]
+    referred_schema: Optional[str]
     referred_table: str
     referred_columns: List[str]
 
@@ -37,12 +38,17 @@ class CheckConstraintInfo(TypedDict):
 
 class TableSchema(TypedDict):
     name: str
+    schema: str
     primary_keys: List[str]
     columns: Optional[List[ColumnInfo]]
     foreign_keys: Optional[List[ForeignKeyInfo]]
     indices: Optional[List[IndexInfo]]
     unique_constraints: Optional[List[ConstraintInfo]]
     check_constraints: Optional[List[CheckConstraintInfo]]
+
+
+# Database schema: {schema_name: {table_name: TableSchema}}
+DBSchema = Dict[str, Dict[str, TableSchema]]
 
 
 class IndexResult(TypedDict):

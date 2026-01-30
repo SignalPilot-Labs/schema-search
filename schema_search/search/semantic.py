@@ -1,9 +1,7 @@
-from typing import Dict, List, Optional
-
-import numpy as np
+from typing import List, Optional
 
 from schema_search.search.base import BaseSearchStrategy
-from schema_search.types import TableSchema, SearchResultItem
+from schema_search.types import DBSchema, SearchResultItem
 from schema_search.chunkers import Chunk
 from schema_search.graph_builder import GraphBuilder
 from schema_search.embedding_cache import BaseEmbeddingCache
@@ -24,7 +22,7 @@ class SemanticSearchStrategy(BaseSearchStrategy):
     def _initial_ranking(
         self,
         query: str,
-        schemas: Dict[str, TableSchema],
+        schemas: DBSchema,
         chunks: List[Chunk],
         graph_builder: GraphBuilder,
         hops: int,
@@ -37,10 +35,9 @@ class SemanticSearchStrategy(BaseSearchStrategy):
         for idx in top_indices:
             chunk = chunks[idx]
             result = self._build_result_item(
-                table_name=chunk.table_name,
+                chunk=chunk,
                 score=float(embedding_scores[idx]),
-                schema=schemas[chunk.table_name],
-                matched_chunks=[chunk.content],
+                schemas=schemas,
                 graph_builder=graph_builder,
                 hops=hops,
             )

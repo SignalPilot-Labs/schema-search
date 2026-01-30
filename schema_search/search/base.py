@@ -1,9 +1,9 @@
-from typing import Dict, List, Optional
+from typing import List, Optional
 from abc import ABC, abstractmethod
 
-from schema_search.types import TableSchema, SearchResultItem
+from schema_search.types import DBSchema, SearchResultItem
 from schema_search.chunkers import Chunk
-from schema_search.graph_builder import GraphBuilder
+from schema_search.graph_builder import GraphBuilder, make_table_key
 from schema_search.rankers.base import BaseRanker
 
 
@@ -18,7 +18,7 @@ class BaseSearchStrategy(ABC):
     def search(
         self,
         query: str,
-        schemas: Dict[str, TableSchema],
+        schemas: DBSchema,
         chunks: List[Chunk],
         graph_builder: GraphBuilder,
         hops: int,
@@ -34,7 +34,7 @@ class BaseSearchStrategy(ABC):
         initial_chunks = []
         for result in initial_results:
             for chunk in chunks:
-                if chunk.table_name == result["table"]:
+                if chunk.qualified_name() == result["table"]:
                     initial_chunks.append(chunk)
                     break
 
@@ -45,10 +45,9 @@ class BaseSearchStrategy(ABC):
         for chunk_idx, score in ranked[: self.rerank_top_k]:
             chunk = initial_chunks[chunk_idx]
             result = self._build_result_item(
-                table_name=chunk.table_name,
+                chunk=chunk,
                 score=score,
-                schema=schemas[chunk.table_name],
-                matched_chunks=[chunk.content],
+                schemas=schemas,
                 graph_builder=graph_builder,
                 hops=hops,
             )
@@ -60,26 +59,28 @@ class BaseSearchStrategy(ABC):
     def _initial_ranking(
         self,
         query: str,
-        schemas: Dict[str, TableSchema],
+        schemas: DBSchema,
         chunks: List[Chunk],
         graph_builder: GraphBuilder,
         hops: int,
     ) -> List[SearchResultItem]:
-        pass
+        raise NotImplementedError
 
     def _build_result_item(
         self,
-        table_name: str,
+        chunk: Chunk,
         score: float,
-        schema: TableSchema,
-        matched_chunks: List[str],
+        schemas: DBSchema,
         graph_builder: GraphBuilder,
         hops: int,
     ) -> SearchResultItem:
+        table_key = make_table_key(chunk.schema_name, chunk.table_name)
+        table_schema = schemas[chunk.schema_name][chunk.table_name]
+
         return {
-            "table": table_name,
+            "table": table_key,
             "score": score,
-            "schema": schema,
-            "matched_chunks": matched_chunks,
-            "related_tables": list(graph_builder.get_neighbors(table_name, hops)),
+            "schema": table_schema,
+            "matched_chunks": [chunk.content],
+            "related_tables": list(graph_builder.get_neighbors(table_key, hops)),
         }

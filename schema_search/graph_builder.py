@@ -1,13 +1,17 @@
 import logging
 import pickle
 from pathlib import Path
-from typing import Dict, Set
+from typing import Set
 
 import networkx as nx
 
-from schema_search.types import TableSchema
+from schema_search.types import DBSchema
 
 logger = logging.getLogger(__name__)
+
+
+def make_table_key(schema_name: str, table_name: str) -> str:
+    return f"{schema_name}.{table_name}"
 
 
 class GraphBuilder:
@@ -16,7 +20,7 @@ class GraphBuilder:
         self.cache_dir.mkdir(exist_ok=True)
         self.graph: nx.DiGraph
 
-    def build(self, schemas: Dict[str, TableSchema], force: bool) -> None:
+    def build(self, schemas: DBSchema, force: bool) -> None:
         cache_file = self.cache_dir / "graph.pkl"
 
         if not force and cache_file.exists():
@@ -29,41 +33,49 @@ class GraphBuilder:
         with open(cache_file, "rb") as f:
             self.graph = pickle.load(f)
 
-    def _build_and_cache(
-        self, schemas: Dict[str, TableSchema], cache_file: Path
-    ) -> None:
+    def _build_and_cache(self, schemas: DBSchema, cache_file: Path) -> None:
         logger.info("Building foreign key relationship graph")
         self.graph = nx.DiGraph()
 
-        for table_name, schema in schemas.items():
-            self.graph.add_node(table_name, **schema)
+        for schema_name, tables in schemas.items():
+            for table_name, table_schema in tables.items():
+                node_name = make_table_key(schema_name, table_name)
+                self.graph.add_node(node_name)
 
-        for table_name, schema in schemas.items():
-            if schema["foreign_keys"]:
-                for fk in schema["foreign_keys"]:
-                    referred_table = fk["referred_table"]
-                    if referred_table in self.graph:
-                        self.graph.add_edge(table_name, referred_table, **fk)
+        for schema_name, tables in schemas.items():
+            for table_name, table_schema in tables.items():
+                foreign_keys = table_schema.get("foreign_keys")
+                if not foreign_keys:
+                    continue
+
+                source = make_table_key(schema_name, table_name)
+                for fk in foreign_keys:
+                    ref_schema = fk.get("referred_schema") or schema_name
+                    ref_table = fk["referred_table"]
+                    target = make_table_key(ref_schema, ref_table)
+
+                    if target in self.graph:
+                        self.graph.add_edge(source, target)
 
         with open(cache_file, "wb") as f:
             pickle.dump(self.graph, f)
 
-    def get_neighbors(self, table_name: str, hops: int) -> Set[str]:
-        if table_name not in self.graph:
+    def get_neighbors(self, qualified_table: str, hops: int) -> Set[str]:
+        if qualified_table not in self.graph:
             return set()
 
         neighbors: Set[str] = set()
 
         forward = nx.single_source_shortest_path_length(
-            self.graph, table_name, cutoff=hops
+            self.graph, qualified_table, cutoff=hops
         )
         neighbors.update(forward.keys())
 
         backward = nx.single_source_shortest_path_length(
-            self.graph.reverse(), table_name, cutoff=hops
+            self.graph.reverse(), qualified_table, cutoff=hops
         )
         neighbors.update(backward.keys())
 
-        neighbors.discard(table_name)
+        neighbors.discard(qualified_table)
 
         return neighbors
