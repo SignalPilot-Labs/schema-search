@@ -67,7 +67,7 @@ def load_chunks(cache_dir: Path) -> Optional[List[Chunk]]:
         cache_dir: Directory containing cache files.
 
     Returns:
-        List of chunks or None if not found.
+        List of chunks or None if not found or incompatible.
     """
     chunks_cache = cache_dir / "chunk_metadata.json"
 
@@ -75,19 +75,23 @@ def load_chunks(cache_dir: Path) -> Optional[List[Chunk]]:
         return None
 
     logger.info(f"Loading chunks from cache: {chunks_cache}")
-    with open(chunks_cache) as f:
-        chunk_data = json.load(f)
-        return [
-            Chunk(
-                catalog=c.get("catalog"),
-                schema_name=c["schema_name"],
-                table_name=c["table_name"],
-                content=c["content"],
-                chunk_id=c["chunk_id"],
-                token_count=c["token_count"],
-            )
-            for c in chunk_data
-        ]
+    try:
+        with open(chunks_cache) as f:
+            chunk_data = json.load(f)
+            return [
+                Chunk(
+                    catalog=c.get("catalog"),
+                    schema_name=c["schema_name"],
+                    table_name=c["table_name"],
+                    content=c["content"],
+                    chunk_id=c["chunk_id"],
+                    token_count=c["token_count"],
+                )
+                for c in chunk_data
+            ]
+    except Exception as e:
+        logger.warning(f"Failed to load chunks cache: {e}")
+        return None
 
 
 def save_chunks(cache_dir: Path, chunks: List[Chunk]) -> None:

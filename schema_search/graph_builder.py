@@ -24,14 +24,21 @@ class GraphBuilder:
         cache_file = self.cache_dir / "graph.pkl"
 
         if not force and cache_file.exists():
-            self._load_from_cache(cache_file)
+            if not self._load_from_cache(cache_file):
+                self._build_and_cache(schemas, cache_file)
         else:
             self._build_and_cache(schemas, cache_file)
 
-    def _load_from_cache(self, cache_file: Path) -> None:
+    def _load_from_cache(self, cache_file: Path) -> bool:
+        """Load graph from cache. Returns True on success, False on failure."""
         logger.debug(f"Loading graph from cache: {cache_file}")
-        with open(cache_file, "rb") as f:
-            self.graph = pickle.load(f)
+        try:
+            with open(cache_file, "rb") as f:
+                self.graph = pickle.load(f)
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to load graph cache: {e}")
+            return False
 
     def _build_and_cache(self, schemas: DBSchema, cache_file: Path) -> None:
         logger.info("Building foreign key relationship graph")
