@@ -46,13 +46,13 @@ class MarkdownRenderer(BaseRenderer):
         lines.append("")
 
         # Related tables
-        related_tables = result.get("related_tables")
+        related_tables = result["related_tables"]
         if related_tables:
             lines.append(f"**Related Tables**: {', '.join(related_tables)}")
             lines.append("")
 
         # Matched chunks
-        matched_chunks = result.get("matched_chunks")
+        matched_chunks = result["matched_chunks"]
         if matched_chunks:
             lines.append("**Matched Content**:")
             for chunk in matched_chunks:
@@ -76,7 +76,7 @@ class MarkdownRenderer(BaseRenderer):
         lines.append("")
 
         # Primary keys
-        if schema.get("primary_keys"):
+        if schema["primary_keys"]:
             lines.append(f"**Primary Keys**: {', '.join(schema['primary_keys'])}")
             lines.append("")
 
@@ -95,8 +95,7 @@ class MarkdownRenderer(BaseRenderer):
             for fk in foreign_keys:
                 constrained = ", ".join(fk["constrained_columns"])
                 referred = ", ".join(fk["referred_columns"])
-                ref_schema = fk.get("referred_schema", schema["schema"])
-                ref_qualified = f"{ref_schema}.{fk['referred_table']}"
+                ref_qualified = f"{fk['referred_schema']}.{fk['referred_table']}"
                 lines.append(f"  - {constrained} -> {ref_qualified}({referred})")
             lines.append("")
 

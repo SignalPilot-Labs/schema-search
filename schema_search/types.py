@@ -15,7 +15,7 @@ class ColumnInfo(TypedDict):
 
 class ForeignKeyInfo(TypedDict):
     constrained_columns: List[str]
-    referred_schema: Optional[str]
+    referred_schema: str
     referred_table: str
     referred_columns: List[str]
 

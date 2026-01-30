@@ -218,20 +218,21 @@ engine = create_engine("bigquery://my-project/my-dataset")
 token = "dapi..."
 host = "dbc-xyz.cloud.databricks.com"
 http_path = "/sql/1.0/warehouses/abc123"
-catalog = "main"
-schema = "default"  # Optional
 
-# Without schema (queries across all schemas in catalog)
+# Without catalog (indexes all catalogs)
 engine = create_engine(
-    f"databricks://token:{token}@{host}?http_path={http_path}&catalog={catalog}",
+    f"databricks://token:{token}@{host}?http_path={http_path}",
     connect_args={"user_agent_entry": "schema-search"}
 )
 
-# With schema (limits to specific schema)
+# With catalog (indexes only specified catalog)
 engine = create_engine(
-    f"databricks://token:{token}@{host}?http_path={http_path}&catalog={catalog}&schema={schema}",
+    f"databricks://token:{token}@{host}?http_path={http_path}&catalog=main",
     connect_args={"user_agent_entry": "schema-search"}
 )
+
+# Filter at search time using schemas parameter
+results = sc.search("users", schemas=["main.default", "main.analytics"])
 ```
 
 ## Search Strategies

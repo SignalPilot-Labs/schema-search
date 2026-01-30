@@ -50,7 +50,7 @@ class GraphBuilder:
 
                 source = make_table_key(schema_name, table_name)
                 for fk in foreign_keys:
-                    ref_schema = fk.get("referred_schema") or schema_name
+                    ref_schema = fk["referred_schema"]
                     ref_table = fk["referred_table"]
                     target = make_table_key(ref_schema, ref_table)
 
