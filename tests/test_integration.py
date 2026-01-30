@@ -420,3 +420,46 @@ def test_search_result_table_format(search_engine):
         assert "." in result["table"], f"Table name '{result['table']}' should be qualified (schema.table)"
 
     print(f"\n✓ All {len(results.results)} results use qualified table names")
+
+
+def test_search_before_index_raises_error(database_url, llm_config):
+    """Test that search() before index() raises ValueError."""
+    engine = create_engine(database_url)
+    search = SchemaSearch(
+        engine,
+        llm_api_key=llm_config["api_key"],
+        llm_base_url=llm_config["base_url"],
+    )
+
+    with pytest.raises(ValueError, match="Must call index\\(\\) before search\\(\\)"):
+        search.search("test query")
+
+    print("\n✓ search() before index() correctly raises ValueError")
+
+
+def test_empty_query_raises_error(search_engine):
+    """Test that empty query raises ValueError."""
+    search_engine.index(force=False)
+
+    with pytest.raises(ValueError, match="Query cannot be empty"):
+        search_engine.search("")
+
+    with pytest.raises(ValueError, match="Query cannot be empty"):
+        search_engine.search("   ")
+
+    print("\n✓ Empty query correctly raises ValueError")
+
+
+def test_get_schema_before_index_raises_error(database_url, llm_config):
+    """Test that get_schema() before index() raises ValueError."""
+    engine = create_engine(database_url)
+    search = SchemaSearch(
+        engine,
+        llm_api_key=llm_config["api_key"],
+        llm_base_url=llm_config["base_url"],
+    )
+
+    with pytest.raises(ValueError, match="Must call index\\(\\) before get_schema\\(\\)"):
+        search.get_schema()
+
+    print("\n✓ get_schema() before index() correctly raises ValueError")
