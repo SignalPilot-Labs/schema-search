@@ -17,15 +17,20 @@ class BaseSearchStrategy(ABC):
     def search(
         self,
         query: str,
-        schemas: DBSchema,
+        db_schema: DBSchema,
         chunks: List[Chunk],
         graph_builder: GraphBuilder,
         hops: int,
         limit: int,
+        catalogs: Optional[List[str]] = None,
+        schemas: Optional[List[str]] = None,
     ) -> List[SearchResultItem]:
         initial_results = self._initial_ranking(
-            query, schemas, chunks, graph_builder, hops
+            query, db_schema, chunks, graph_builder, hops
         )
+
+        if catalogs or schemas:
+            initial_results = self._filter_results(initial_results, catalogs, schemas)
 
         if self.reranker is None:
             return initial_results[:limit]
@@ -46,7 +51,7 @@ class BaseSearchStrategy(ABC):
             result = self._build_result_item(
                 chunk=chunk,
                 score=score,
-                schemas=schemas,
+                db_schema=db_schema,
                 graph_builder=graph_builder,
                 hops=hops,
             )
@@ -54,11 +59,31 @@ class BaseSearchStrategy(ABC):
 
         return reranked_results[:limit]
 
+    def _filter_results(
+        self,
+        results: List[SearchResultItem],
+        catalogs: Optional[List[str]],
+        schemas: Optional[List[str]],
+    ) -> List[SearchResultItem]:
+        """Filter results by catalog and/or schema."""
+        filtered = []
+        for result in results:
+            table_key = result["table"]
+            catalog, schema_name = Chunk.parse_schema_key(table_key.rsplit(".", 1)[0])
+
+            if catalogs and catalog not in catalogs:
+                continue
+            if schemas and schema_name not in schemas:
+                continue
+
+            filtered.append(result)
+        return filtered
+
     @abstractmethod
     def _initial_ranking(
         self,
         query: str,
-        schemas: DBSchema,
+        db_schema: DBSchema,
         chunks: List[Chunk],
         graph_builder: GraphBuilder,
         hops: int,
@@ -69,11 +94,11 @@ class BaseSearchStrategy(ABC):
         self,
         chunk: Chunk,
         score: float,
-        schemas: DBSchema,
+        db_schema: DBSchema,
         graph_builder: GraphBuilder,
         hops: int,
     ) -> SearchResultItem:
-        table_schema = schemas[chunk.schema_key][chunk.table_name]
+        table_schema = db_schema[chunk.schema_key][chunk.table_name]
 
         return {
             "table": chunk.table_key,

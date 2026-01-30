@@ -24,7 +24,7 @@ class BM25SearchStrategy(BaseSearchStrategy):
     def _initial_ranking(
         self,
         query: str,
-        schemas: DBSchema,
+        db_schema: DBSchema,
         chunks: List[Chunk],
         graph_builder: GraphBuilder,
         hops: int,
@@ -38,7 +38,7 @@ class BM25SearchStrategy(BaseSearchStrategy):
             result = self._build_result_item(
                 chunk=chunk,
                 score=float(scores[idx]),
-                schemas=schemas,
+                db_schema=db_schema,
                 graph_builder=graph_builder,
                 hops=hops,
             )

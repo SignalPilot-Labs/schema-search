@@ -17,7 +17,7 @@ class FuzzySearchStrategy(BaseSearchStrategy):
     def _initial_ranking(
         self,
         query: str,
-        schemas: DBSchema,
+        db_schema: DBSchema,
         chunks: List[Chunk],
         graph_builder: GraphBuilder,
         hops: int,
@@ -25,7 +25,7 @@ class FuzzySearchStrategy(BaseSearchStrategy):
         # (schema_name, table_name, score)
         scored_tables: List[Tuple[str, str, float]] = []
 
-        for schema_name, tables in schemas.items():
+        for schema_name, tables in db_schema.items():
             for table_name, table_schema in tables.items():
                 searchable_text = self._build_searchable_text(table_name, table_schema)
                 score = fuzz.ratio(query, searchable_text, score_cutoff=0) / 100.0
@@ -36,7 +36,7 @@ class FuzzySearchStrategy(BaseSearchStrategy):
         results: List[SearchResultItem] = []
         for schema_name, table_name, score in scored_tables[: self.initial_top_k]:
             table_key = make_table_key(schema_name, table_name)
-            table_schema = schemas[schema_name][table_name]
+            table_schema = db_schema[schema_name][table_name]
 
             result: SearchResultItem = {
                 "table": table_key,

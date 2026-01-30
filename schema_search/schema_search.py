@@ -11,7 +11,7 @@ from schema_search.extractors.factory import create_extractor
 from schema_search.graph_builder import GraphBuilder
 from schema_search.rankers.factory import create_ranker
 from schema_search.search.factory import create_search_strategy
-from schema_search.types import Chunk, DBSchema, IndexResult, SearchResult, SearchResultItem, SearchType
+from schema_search.types import Chunk, DBSchema, IndexResult, SearchResult, SearchType
 from schema_search.utils.cache import load_chunks, load_schema, save_chunks, save_schema, schema_changed
 from schema_search.utils.config import load_config, validate_dependencies
 from schema_search.utils.utils import setup_logging, time_it
@@ -221,14 +221,16 @@ class SchemaSearch:
 
         strategy = self._get_search_strategy(resolved_type)
 
-        # Search on all chunks (indices must match BM25/embedding cache)
         results = strategy.search(
-            query, self.schemas, self.chunks, self.graph_builder, hops, limit
+            query=query,
+            db_schema=self.schemas,
+            chunks=self.chunks,
+            graph_builder=self.graph_builder,
+            hops=hops,
+            limit=limit,
+            catalogs=catalogs,
+            schemas=schemas,
         )
-
-        # Filter results after scoring
-        if catalogs or schemas:
-            results = self._filter_results(results, catalogs, schemas)
 
         logger.debug(f"Found {len(results)} results")
 
@@ -237,24 +239,3 @@ class SchemaSearch:
             latency_sec=0.0,
             output_format=resolved_format
         )
-
-    def _filter_results(
-        self,
-        results: List[SearchResultItem],
-        catalogs: Optional[List[str]],
-        schemas: Optional[List[str]],
-    ) -> List[SearchResultItem]:
-        """Filter search results by catalog and/or schema."""
-        filtered = []
-        for result in results:
-            table_key = result["table"]
-            catalog, schema_name = Chunk.parse_schema_key(table_key.rsplit(".", 1)[0])
-
-            if catalogs and catalog not in catalogs:
-                continue
-            if schemas and schema_name not in schemas:
-                continue
-
-            filtered.append(result)
-
-        return filtered

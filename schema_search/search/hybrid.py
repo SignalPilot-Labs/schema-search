@@ -32,7 +32,7 @@ class HybridSearchStrategy(BaseSearchStrategy):
     def _initial_ranking(
         self,
         query: str,
-        schemas: DBSchema,
+        db_schema: DBSchema,
         chunks: List[Chunk],
         graph_builder: GraphBuilder,
         hops: int,
@@ -71,7 +71,7 @@ class HybridSearchStrategy(BaseSearchStrategy):
             result = self._build_result_item(
                 chunk=chunk,
                 score=float(hybrid_scores[idx]),
-                schemas=schemas,
+                db_schema=db_schema,
                 graph_builder=graph_builder,
                 hops=hops,
             )
