@@ -13,20 +13,9 @@ def databricks_url():
     env_path = Path(__file__).parent / ".env"
     load_dotenv(env_path)
 
-    host = os.getenv("DATABRICKS_HOST")
-    http_path = os.getenv("DATABRICKS_HTTP_PATH")
-    token = os.getenv("DATABRICKS_TOKEN")
-    catalog = os.getenv("DATABRICKS_CATALOG")
-    schema = os.getenv("DATABRICKS_SCHEMA")
-
-    if not all([host, http_path, token, catalog]):
-        pytest.skip(
-            "DATABRICKS_HOST, DATABRICKS_HTTP_PATH, DATABRICKS_TOKEN, or DATABRICKS_CATALOG not set in tests/.env"
-        )
-
-    url = f"databricks://token:{token}@{host}?http_path={http_path}&catalog={catalog}"
-    if schema:
-        url += f"&schema={schema}"
+    url = os.getenv("DATABASE_DATABRICKS_URL")
+    if not url:
+        pytest.skip("DATABASE_DATABRICKS_URL not set in tests/.env")
 
     return url
 
@@ -61,32 +50,26 @@ def test_databricks_basic_query(databricks_engine):
 
 
 def test_databricks_list_tables(databricks_engine):
-    """Test listing tables from Databricks catalog."""
-    catalog = databricks_engine.url.query["catalog"]
-    schema = databricks_engine.url.query.get("schema")
-
-    if schema:
-        print(f"\nListing tables from catalog: {catalog}, schema: {schema}")
-    else:
-        print(f"\nListing tables from catalog: {catalog}")
+    """Test listing tables from Databricks."""
+    print("\nListing tables from Databricks...")
 
     query = text("""
-        SELECT table_name, table_schema
+        SELECT table_catalog, table_schema, table_name
         FROM system.information_schema.tables
-        WHERE table_catalog = :catalog
+        WHERE table_catalog NOT IN ('system', 'samples', 'hive_metastore')
         AND table_schema NOT IN ('information_schema', 'sys')
         LIMIT 5
     """)
 
     with databricks_engine.connect() as conn:
-        result = conn.execute(query, {"catalog": catalog})
+        result = conn.execute(query)
         rows = list(result)
 
     print(f"✓ Found {len(rows)} tables:")
     for row in rows:
-        print(f"  - {row[1]}.{row[0]}")
+        print(f"  - {row[0]}.{row[1]}.{row[2]}")
 
-    assert len(rows) > 0, "No tables found in catalog"
+    assert len(rows) > 0, "No tables found"
 
 
 def test_databricks_connection(databricks_engine):

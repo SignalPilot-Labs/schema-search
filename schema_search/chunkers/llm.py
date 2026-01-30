@@ -4,7 +4,7 @@ from typing import Optional, TYPE_CHECKING
 
 from schema_search.chunkers.base import BaseChunker
 from schema_search.types import TableSchema
-from schema_search.utils.lazy_import import lazy_import_check
+from schema_search.utils.utils import lazy_import_check
 
 if TYPE_CHECKING:
     from openai import OpenAI

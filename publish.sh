@@ -13,7 +13,7 @@ if [ -z "$1" ]; then
     usage
 fi
 
-CURRENT_VERSION=$(sed -n 's/.*version="\([^"]*\)".*/\1/p' setup.py)
+CURRENT_VERSION=$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml)
 IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
 
 case "$1" in
@@ -48,9 +48,9 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     exit 1
 fi
 
-sed -i.bak "s/version=\"[^\"]*\"/version=\"$NEW_VERSION\"/" setup.py && rm setup.py.bak
+sed -i.bak "s/^version = \"[^\"]*\"/version = \"$NEW_VERSION\"/" pyproject.toml && rm pyproject.toml.bak
 
-git add setup.py
+git add pyproject.toml
 git commit -m "Bump version to $TAG"
 
 git tag "$TAG"

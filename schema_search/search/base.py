@@ -1,8 +1,7 @@
-from typing import Dict, List, Optional
+from typing import List, Optional
 from abc import ABC, abstractmethod
 
-from schema_search.types import TableSchema, SearchResultItem
-from schema_search.chunkers import Chunk
+from schema_search.types import Chunk, DBSchema, SearchResultItem
 from schema_search.graph_builder import GraphBuilder
 from schema_search.rankers.base import BaseRanker
 
@@ -18,15 +17,20 @@ class BaseSearchStrategy(ABC):
     def search(
         self,
         query: str,
-        schemas: Dict[str, TableSchema],
+        db_schema: DBSchema,
         chunks: List[Chunk],
         graph_builder: GraphBuilder,
         hops: int,
         limit: int,
+        catalogs: Optional[List[str]] = None,
+        schemas: Optional[List[str]] = None,
     ) -> List[SearchResultItem]:
         initial_results = self._initial_ranking(
-            query, schemas, chunks, graph_builder, hops
+            query, db_schema, chunks, graph_builder, hops
         )
+
+        if catalogs or schemas:
+            initial_results = self._filter_results(initial_results, catalogs, schemas)
 
         if self.reranker is None:
             return initial_results[:limit]
@@ -34,7 +38,7 @@ class BaseSearchStrategy(ABC):
         initial_chunks = []
         for result in initial_results:
             for chunk in chunks:
-                if chunk.table_name == result["table"]:
+                if chunk.table_key == result["table"]:
                     initial_chunks.append(chunk)
                     break
 
@@ -45,10 +49,9 @@ class BaseSearchStrategy(ABC):
         for chunk_idx, score in ranked[: self.rerank_top_k]:
             chunk = initial_chunks[chunk_idx]
             result = self._build_result_item(
-                table_name=chunk.table_name,
+                chunk=chunk,
                 score=score,
-                schema=schemas[chunk.table_name],
-                matched_chunks=[chunk.content],
+                db_schema=db_schema,
                 graph_builder=graph_builder,
                 hops=hops,
             )
@@ -56,30 +59,51 @@ class BaseSearchStrategy(ABC):
 
         return reranked_results[:limit]
 
+    def _filter_results(
+        self,
+        results: List[SearchResultItem],
+        catalogs: Optional[List[str]],
+        schemas: Optional[List[str]],
+    ) -> List[SearchResultItem]:
+        """Filter results by catalog and/or schema."""
+        filtered = []
+        for result in results:
+            table_key = result["table"]
+            catalog, schema_name = Chunk.parse_schema_key(table_key.rsplit(".", 1)[0])
+
+            if catalogs and catalog not in catalogs:
+                continue
+            if schemas and schema_name not in schemas:
+                continue
+
+            filtered.append(result)
+        return filtered
+
     @abstractmethod
     def _initial_ranking(
         self,
         query: str,
-        schemas: Dict[str, TableSchema],
+        db_schema: DBSchema,
         chunks: List[Chunk],
         graph_builder: GraphBuilder,
         hops: int,
     ) -> List[SearchResultItem]:
-        pass
+        raise NotImplementedError
 
     def _build_result_item(
         self,
-        table_name: str,
+        chunk: Chunk,
         score: float,
-        schema: TableSchema,
-        matched_chunks: List[str],
+        db_schema: DBSchema,
         graph_builder: GraphBuilder,
         hops: int,
     ) -> SearchResultItem:
+        table_schema = db_schema[chunk.schema_key][chunk.table_name]
+
         return {
-            "table": table_name,
+            "table": chunk.table_key,
             "score": score,
-            "schema": schema,
-            "matched_chunks": matched_chunks,
-            "related_tables": list(graph_builder.get_neighbors(table_name, hops)),
+            "schema": table_schema,
+            "matched_chunks": [chunk.content],
+            "related_tables": list(graph_builder.get_neighbors(chunk.table_key, hops)),
         }

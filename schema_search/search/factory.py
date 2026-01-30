@@ -5,7 +5,7 @@ from schema_search.search.fuzzy import FuzzySearchStrategy
 from schema_search.search.bm25 import BM25SearchStrategy
 from schema_search.search.hybrid import HybridSearchStrategy
 from schema_search.search.base import BaseSearchStrategy
-from schema_search.embedding_cache import BaseEmbeddingCache
+from schema_search.embedding_cache.base import BaseEmbeddingCache
 from schema_search.rankers.base import BaseRanker
 
 

@@ -1,43 +1,23 @@
-import json
 import logging
-import time
-from functools import wraps
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import List, Optional
 
-import yaml
 from sqlalchemy.engine import Engine
 
-from schema_search.schema_extractor import SchemaExtractor
-from schema_search.databricks_schema_extractor import DatabricksSchemaExtractor
-from schema_search.chunkers import Chunk, create_chunker
-from schema_search.embedding_cache import create_embedding_cache
+from schema_search.chunkers.factory import create_chunker
+from schema_search.embedding_cache.factory import create_embedding_cache
 from schema_search.embedding_cache.bm25 import BM25Cache
+from schema_search.extractors.factory import create_extractor
 from schema_search.graph_builder import GraphBuilder
-from schema_search.search import create_search_strategy
-from schema_search.types import IndexResult, SearchResult, SearchType, TableSchema
-from schema_search.rankers import create_ranker
+from schema_search.rankers.factory import create_ranker
+from schema_search.search.factory import create_search_strategy
+from schema_search.types import Chunk, DBSchema, IndexResult, SearchResult, SearchType
+from schema_search.utils.cache import load_chunks, load_schema, save_chunks, save_schema, schema_changed
+from schema_search.utils.config import load_config, validate_dependencies
+from schema_search.utils.utils import setup_logging, time_it
 
 
 logger = logging.getLogger(__name__)
-
-
-def time_it(func):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        start = time.time()
-        result = func(*args, **kwargs)
-        elapsed = time.time() - start
-
-        # Handle both dict and SearchResult objects
-        if isinstance(result, dict):
-            result["latency_sec"] = round(elapsed, 3)
-        elif isinstance(result, SearchResult):
-            result.latency_sec = round(elapsed, 3)
-
-        return result
-
-    return wrapper
 
 
 class SchemaSearch:
@@ -48,24 +28,20 @@ class SchemaSearch:
         llm_api_key: Optional[str] = None,
         llm_base_url: Optional[str] = None,
     ):
-        self.config = self._load_config(config_path)
-        self._setup_logging()
+        self.config = load_config(config_path)
+        setup_logging(self.config)
+        validate_dependencies(self.config)
 
         base_cache_dir = Path(self.config["embedding"]["cache_dir"])
         db_name = engine.url.database or "default"
         cache_dir = base_cache_dir / db_name
         cache_dir.mkdir(parents=True, exist_ok=True)
 
-        self.schemas: Dict[str, TableSchema] = {}
+        self.schemas: DBSchema = {}
         self.chunks: List[Chunk] = []
         self.cache_dir = cache_dir
 
-        self._validate_dependencies()
-
-        if engine.dialect.name == "databricks":
-            self.schema_extractor = DatabricksSchemaExtractor(engine, self.config)
-        else:
-            self.schema_extractor = SchemaExtractor(engine, self.config)
+        self.extractor = create_extractor(engine, self.config)
         self.chunker = create_chunker(self.config, llm_api_key, llm_base_url)
         self._embedding_cache = None
         self._bm25_cache = None
@@ -74,137 +50,47 @@ class SchemaSearch:
         self._reranker_config = self.config["reranker"]["model"]
         self._search_strategies = {}
 
-    def _setup_logging(self) -> None:
-        level = getattr(logging, self.config["logging"]["level"])
-        logging.basicConfig(
-            level=level,
-            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-            force=True,
-        )
-        logger.setLevel(level)
-
-    def _load_config(self, config_path: Optional[str]) -> Dict:
-        if config_path is None:
-            config_path = str(Path(__file__).parent.parent / "config.yml")
-
-        with open(config_path) as f:
-            return yaml.safe_load(f)
-
-    def _validate_dependencies(self) -> None:
-        from schema_search.utils.lazy_import import lazy_import_check
-
-        strategy = self.config["search"]["strategy"]
-        reranker_model = self.config["reranker"]["model"]
-        chunking_strategy = self.config["chunking"]["strategy"]
-
-        needs_semantic = strategy in ("semantic", "hybrid") or reranker_model
-        if needs_semantic:
-            lazy_import_check(
-                "sentence_transformers",
-                "semantic",
-                f"{strategy} search or reranking"
-            )
-
-        if chunking_strategy == "llm":
-            lazy_import_check("openai", "llm", "LLM-based chunking")
-
     @time_it
     def index(self, force: bool = False) -> IndexResult:
         logger.info("Starting schema indexing" + (" (force)" if force else ""))
 
-        current_schema = self._extract_current_schema()
+        current_schema = self.extractor.extract()
 
-        schema_changed = False
+        has_changed = False
         if not force:
-            cached_schema = self._load_cached_schema()
-            schema_changed = self._schema_has_changed(cached_schema, current_schema)
-            if schema_changed:
+            cached = load_schema(self.cache_dir)
+            has_changed = schema_changed(cached, current_schema)
+            if has_changed:
                 logger.info("Schema change detected; forcing reindex")
 
-        self._cache_schema(current_schema)
+        save_schema(self.cache_dir, current_schema)
 
-        effective_force = force or schema_changed
+        effective_force = force or has_changed
 
         self.schemas = current_schema
         self.graph_builder.build(self.schemas, effective_force)
-        self.chunks = self._load_or_generate_chunks(self.schemas, effective_force)
+        self.chunks = self._load_or_generate_chunks(effective_force)
         self._index_force = effective_force
 
+        table_count = sum(len(tables) for tables in self.schemas.values())
         logger.info(
-            f"Indexing complete: {len(self.schemas)} tables, {len(self.chunks)} chunks"
+            f"Indexing complete: {table_count} tables, {len(self.chunks)} chunks"
         )
         return {
-            "tables": len(self.schemas),
+            "tables": table_count,
             "chunks": len(self.chunks),
             "latency_sec": 0.0,
         }
 
-    def _extract_current_schema(self) -> Dict[str, TableSchema]:
-        logger.info("Extracting schema from database")
-        return self.schema_extractor.extract()
-
-    def _load_cached_schema(self) -> Optional[Dict[str, TableSchema]]:
-        schema_cache = self.cache_dir / "metadata.json"
-
-        if not schema_cache.exists():
-            logger.debug("Schema cache missing; treating as schema change")
-            return None
-
-        with open(schema_cache) as f:
-            return json.load(f)
-
-    def _cache_schema(self, schema: Dict[str, TableSchema]) -> None:
-        schema_cache = self.cache_dir / "metadata.json"
-        with open(schema_cache, "w") as f:
-            json.dump(schema, f, indent=2)
-
-    def _schema_has_changed(
-        self,
-        cached_schema: Optional[Dict[str, TableSchema]],
-        current_schema: Dict[str, TableSchema],
-    ) -> bool:
-        if cached_schema is None:
-            return True
-        if cached_schema != current_schema:
-            logger.debug("Cached schema differs from current schema")
-            return True
-        logger.debug("Schema matches cached version; reuse existing index")
-        return False
-
-    def _load_or_generate_chunks(
-        self, schemas: Dict[str, TableSchema], force: bool
-    ) -> List[Chunk]:
-        chunks_cache = self.cache_dir / "chunk_metadata.json"
-
-        if not force and chunks_cache.exists():
-            logger.info(f"Loading chunks from cache: {chunks_cache}")
-            with open(chunks_cache) as f:
-                chunk_data = json.load(f)
-                return [
-                    Chunk(
-                        table_name=c["table_name"],
-                        content=c["content"],
-                        chunk_id=c["chunk_id"],
-                        token_count=c["token_count"],
-                    )
-                    for c in chunk_data
-                ]
+    def _load_or_generate_chunks(self, force: bool) -> List[Chunk]:
+        if not force:
+            cached = load_chunks(self.cache_dir)
+            if cached is not None:
+                return cached
 
         logger.info("Generating chunks from schemas")
-        chunks = self.chunker.chunk_schemas(schemas)
-
-        with open(chunks_cache, "w") as f:
-            chunk_data = [
-                {
-                    "table_name": c.table_name,
-                    "content": c.content,
-                    "chunk_id": c.chunk_id,
-                    "token_count": c.token_count,
-                }
-                for c in chunks
-            ]
-            json.dump(chunk_data, f, indent=2)
-
+        chunks = self.chunker.chunk_schemas(self.schemas)
+        save_chunks(self.cache_dir, chunks)
         return chunks
 
     def _get_embedding_cache(self):
@@ -254,37 +140,96 @@ class SchemaSearch:
             )
         return self._search_strategies[search_type]
 
+    def get_schema(
+        self,
+        catalogs: Optional[List[str]] = None,
+        schemas: Optional[List[str]] = None,
+    ) -> DBSchema:
+        """Get the full schema structure.
+
+        Args:
+            catalogs: Optional list of catalog names to include (Databricks only).
+            schemas: Optional list of schema names to include.
+
+        Returns:
+            Nested dict: {schema_key: {table_name: TableSchema}}
+        """
+        if not self.schemas:
+            raise ValueError("Must call index() before get_schema()")
+
+        if not catalogs and not schemas:
+            return self.schemas
+
+        result: DBSchema = {}
+        for schema_key, tables in self.schemas.items():
+            catalog, schema_name = Chunk.parse_schema_key(schema_key)
+
+            if catalogs and catalog not in catalogs:
+                continue
+            if schemas and schema_name not in schemas:
+                continue
+
+            result[schema_key] = tables
+
+        return result
+
     @time_it
     def search(
         self,
         query: str,
+        catalogs: Optional[List[str]] = None,
+        schemas: Optional[List[str]] = None,
         hops: Optional[int] = None,
         limit: Optional[int] = None,
         search_type: Optional[SearchType] = None,
         output_format: Optional[str] = None,
     ) -> SearchResult:
+        """Search for tables matching the query.
+
+        Args:
+            query: Search query
+            catalogs: Optional list of catalog names to search (Databricks only).
+            schemas: Optional list of schema names to search.
+            hops: Graph traversal hops
+            limit: Max results
+            search_type: bm25, semantic, fuzzy, or hybrid
+            output_format: Output format (markdown or json)
+
+        Returns:
+            SearchResult with matching tables
+        """
+        if not self.chunks:
+            raise ValueError("Must call index() before search()")
+        if not query or not query.strip():
+            raise ValueError("Query cannot be empty")
+
         if hops is None:
             hops = int(self.config["search"]["hops"])
         if limit is None:
             limit = int(self.config["output"]["limit"])
 
-        # Ensure output_format is never None
-        output_format = output_format or self.config["output"]["format"]
+        resolved_format: str = output_format or self.config["output"]["format"]
+        resolved_type: str = search_type or self.config["search"]["strategy"]
 
-        logger.debug(f"Searching: {query} (hops={hops}, search_type={search_type})")
+        logger.debug(f"Searching: {query} (catalogs={catalogs}, schemas={schemas}, hops={hops})")
 
-        search_type = search_type or self.config["search"]["strategy"]
-
-        if search_type in ["semantic", "hybrid"]:
+        if resolved_type in ["semantic", "hybrid"]:
             self._ensure_embeddings_loaded()
 
-        if search_type in ["bm25", "hybrid"]:
+        if resolved_type in ["bm25", "hybrid"]:
             self._ensure_bm25_built()
 
-        strategy = self._get_search_strategy(search_type)
+        strategy = self._get_search_strategy(resolved_type)
 
         results = strategy.search(
-            query, self.schemas, self.chunks, self.graph_builder, hops, limit
+            query=query,
+            db_schema=self.schemas,
+            chunks=self.chunks,
+            graph_builder=self.graph_builder,
+            hops=hops,
+            limit=limit,
+            catalogs=catalogs,
+            schemas=schemas,
         )
 
         logger.debug(f"Found {len(results)} results")
@@ -292,5 +237,5 @@ class SchemaSearch:
         return SearchResult(
             results=results,
             latency_sec=0.0,
-            output_format=output_format
+            output_format=resolved_format
         )

@@ -104,43 +104,43 @@ def _get_eval_data():
     return [
         {
             "question": "which table has user email address?",
-            "correct_table": "user_metadata",
+            "correct_table": "public.user_metadata",
         },
         {
             "question": "which table has scrapped project content?",
-            "correct_table": "project_content",
+            "correct_table": "public.project_content",
         },
         {
             "question": "where can I find complete list of twitter bot accounts?",
-            "correct_table": "agent_metadata",
+            "correct_table": "public.agent_metadata",
         },
         {
             "question": "which table user api keys??",
-            "correct_table": "api_token",
+            "correct_table": "public.api_token",
         },
         {
             "question": "which table has user deposits?",
-            "correct_table": "user_deposits",
+            "correct_table": "public.user_deposits",
         },
         {
             "question": "which table has information about infrastructure?",
-            "correct_table": "node_metadata",
+            "correct_table": "public.node_metadata",
         },
         {
             "question": "which table has information about user balances?",
-            "correct_table": "user_balances",
+            "correct_table": "public.user_balances",
         },
         {
             "question": "which table maps news to topics?",
-            "correct_table": "news_to_topic_map",
+            "correct_table": "public.news_to_topic_map",
         },
         {
             "question": "which table has information about projects?",
-            "correct_table": "project_metadata",
+            "correct_table": "public.project_metadata",
         },
         {
             "question": "which table user query metrics?",
-            "correct_table": "query_metrics",
+            "correct_table": "public.query_metrics",
         },
     ]
 
@@ -352,3 +352,114 @@ def test_strategy_caching(database_url, llm_config):
     assert len(search._search_strategies) == 2, "Two strategies cached now"
 
     print("\n✓ Strategy caching verified: strategies are reused")
+
+
+def test_get_schema_returns_all_schemas(search_engine):
+    """Test that get_schema() returns all schemas when no filter is applied."""
+    search_engine.index(force=False)
+
+    schema = search_engine.get_schema()
+
+    assert len(schema) > 0, "Should have at least one schema"
+    assert "public" in schema, "Should have public schema for PostgreSQL"
+    print(f"\n✓ get_schema() returned {len(schema)} schemas")
+
+
+def test_get_schema_with_schema_filter(search_engine):
+    """Test that get_schema() filters by schema name."""
+    search_engine.index(force=False)
+
+    schema = search_engine.get_schema(schemas=["public"])
+
+    assert len(schema) == 1, "Should have exactly one schema"
+    assert "public" in schema, "Should have public schema"
+    print(f"\n✓ get_schema(schemas=['public']) returned {len(schema)} schema")
+
+
+def test_get_schema_with_nonexistent_schema(search_engine):
+    """Test that get_schema() returns empty for nonexistent schema."""
+    search_engine.index(force=False)
+
+    schema = search_engine.get_schema(schemas=["nonexistent"])
+
+    assert len(schema) == 0, "Should have no schemas"
+    print("\n✓ get_schema(schemas=['nonexistent']) returned empty")
+
+
+def test_search_with_schema_filter(search_engine):
+    """Test that search() filters results by schema."""
+    search_engine.index(force=False)
+
+    results = search_engine.search("users", schemas=["public"], search_type="bm25")
+
+    assert len(results.results) > 0, "Should have results"
+    for result in results.results:
+        assert result["table"].startswith("public."), f"Result {result['table']} should be in public schema"
+
+    print(f"\n✓ search with schema filter returned {len(results.results)} results in public schema")
+
+
+def test_search_with_nonexistent_schema_filter(search_engine):
+    """Test that search() returns empty for nonexistent schema filter."""
+    search_engine.index(force=False)
+
+    results = search_engine.search("users", schemas=["nonexistent"], search_type="bm25")
+
+    assert len(results.results) == 0, "Should have no results for nonexistent schema"
+    print("\n✓ search with nonexistent schema filter returned empty")
+
+
+def test_search_result_table_format(search_engine):
+    """Test that search results use qualified table names."""
+    search_engine.index(force=False)
+
+    results = search_engine.search("user", search_type="bm25", limit=5)
+
+    assert len(results.results) > 0, "Should have results"
+    for result in results.results:
+        assert "." in result["table"], f"Table name '{result['table']}' should be qualified (schema.table)"
+
+    print(f"\n✓ All {len(results.results)} results use qualified table names")
+
+
+def test_search_before_index_raises_error(database_url, llm_config):
+    """Test that search() before index() raises ValueError."""
+    engine = create_engine(database_url)
+    search = SchemaSearch(
+        engine,
+        llm_api_key=llm_config["api_key"],
+        llm_base_url=llm_config["base_url"],
+    )
+
+    with pytest.raises(ValueError, match="Must call index\\(\\) before search\\(\\)"):
+        search.search("test query")
+
+    print("\n✓ search() before index() correctly raises ValueError")
+
+
+def test_empty_query_raises_error(search_engine):
+    """Test that empty query raises ValueError."""
+    search_engine.index(force=False)
+
+    with pytest.raises(ValueError, match="Query cannot be empty"):
+        search_engine.search("")
+
+    with pytest.raises(ValueError, match="Query cannot be empty"):
+        search_engine.search("   ")
+
+    print("\n✓ Empty query correctly raises ValueError")
+
+
+def test_get_schema_before_index_raises_error(database_url, llm_config):
+    """Test that get_schema() before index() raises ValueError."""
+    engine = create_engine(database_url)
+    search = SchemaSearch(
+        engine,
+        llm_api_key=llm_config["api_key"],
+        llm_base_url=llm_config["base_url"],
+    )
+
+    with pytest.raises(ValueError, match="Must call index\\(\\) before get_schema\\(\\)"):
+        search.get_schema()
+
+    print("\n✓ get_schema() before index() correctly raises ValueError")

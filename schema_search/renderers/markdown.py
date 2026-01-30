@@ -46,13 +46,13 @@ class MarkdownRenderer(BaseRenderer):
         lines.append("")
 
         # Related tables
-        related_tables = result.get("related_tables")
+        related_tables = result["related_tables"]
         if related_tables:
             lines.append(f"**Related Tables**: {', '.join(related_tables)}")
             lines.append("")
 
         # Matched chunks
-        matched_chunks = result.get("matched_chunks")
+        matched_chunks = result["matched_chunks"]
         if matched_chunks:
             lines.append("**Matched Content**:")
             for chunk in matched_chunks:
@@ -70,12 +70,13 @@ class MarkdownRenderer(BaseRenderer):
         """Render table schema as markdown."""
         lines = []
 
-        # Table name
-        lines.append(f"### {schema['name']}")
+        # Table name with schema
+        full_name = f"{schema['schema']}.{schema['name']}"
+        lines.append(f"### {full_name}")
         lines.append("")
 
         # Primary keys
-        if schema.get("primary_keys"):
+        if schema["primary_keys"]:
             lines.append(f"**Primary Keys**: {', '.join(schema['primary_keys'])}")
             lines.append("")
 
@@ -94,7 +95,8 @@ class MarkdownRenderer(BaseRenderer):
             for fk in foreign_keys:
                 constrained = ", ".join(fk["constrained_columns"])
                 referred = ", ".join(fk["referred_columns"])
-                lines.append(f"  - {constrained} -> {fk['referred_table']}({referred})")
+                ref_table = f"{fk['referred_schema']}.{fk['referred_table']}"
+                lines.append(f"  - {constrained} -> {ref_table}({referred})")
             lines.append("")
 
         # Indices
@@ -102,9 +104,10 @@ class MarkdownRenderer(BaseRenderer):
         if indices:
             lines.append("**Indices**:")
             for idx in indices:
-                unique = "UNIQUE " if idx["unique"] else ""
-                cols = ", ".join(idx["columns"])
-                lines.append(f"  - {unique}{idx['name']}: ({cols})")
+                if idx["name"]:
+                    unique = "UNIQUE " if idx["unique"] else ""
+                    cols = ", ".join(idx["columns"])
+                    lines.append(f"  - {unique}{idx['name']}: ({cols})")
             lines.append("")
 
         # Unique constraints

@@ -147,7 +147,9 @@ schema-search "postgresql://user:pass@localhost/db" "optional/path/to/config.yml
 
 Optional args: `[config_path] [llm_api_key] [llm_base_url]`
 
-The server exposes `schema_search(query, hops, limit)` for natural language schema queries.
+The server exposes two tools:
+- `schema_search(query, schemas, catalogs, limit)` - Search tables using natural language
+- `get_schema(schemas, catalogs)` - Get full database schema structure
 
 ## Python Use
 
@@ -175,9 +177,9 @@ print(results)  # Formatted markdown with schemas, relationships, and scores
 # Access underlying data as dictionary
 result_dict = results.to_dict()
 for result in result_dict['results']:
-    print(result['table'])           # "refund_transactions"
+    print(result['table'])           # "public.refund_transactions" (qualified name)
     print(result['schema'])           # Full column info, types, constraints
-    print(result['related_tables'])   # ["users", "payments", "transactions"]
+    print(result['related_tables'])   # ["public.users", "public.payments"]
 
 # Override output format explicitly
 json_results = sc.search("where are user refunds stored?", output_format="json")
@@ -185,6 +187,13 @@ print(json_results)  # JSON formatted string
 
 # Override hops, limit, search strategy, and output format
 results = sc.search("user_table", hops=1, limit=5, search_type="hybrid", output_format="markdown")
+
+# Filter by specific schemas
+results = sc.search("user accounts", schemas=["public", "billing"])
+
+# Get the full schema structure (useful for backends)
+db_schema = sc.get_schema()  # Returns {schema_key: {table_name: TableSchema}}
+public_schema = sc.get_schema(schemas=["public"])  # Filter to specific schemas
 
 ```
 
@@ -207,24 +216,18 @@ engine = create_engine("snowflake://myuser:mypass@xy12345.us-east-1/MYDB/PUBLIC?
 # BigQuery
 engine = create_engine("bigquery://my-project/my-dataset")
 
-# Databricks
+# Databricks (indexes all catalogs, filter at search time)
 token = "dapi..."
 host = "dbc-xyz.cloud.databricks.com"
 http_path = "/sql/1.0/warehouses/abc123"
-catalog = "main"
-schema = "default"  # Optional
 
-# Without schema (queries across all schemas in catalog)
 engine = create_engine(
-    f"databricks://token:{token}@{host}?http_path={http_path}&catalog={catalog}",
+    f"databricks://token:{token}@{host}?http_path={http_path}",
     connect_args={"user_agent_entry": "schema-search"}
 )
 
-# With schema (limits to specific schema)
-engine = create_engine(
-    f"databricks://token:{token}@{host}?http_path={http_path}&catalog={catalog}&schema={schema}",
-    connect_args={"user_agent_entry": "schema-search"}
-)
+# Filter by catalog/schema at search time
+results = sc.search("users", catalogs=["main"], schemas=["default", "analytics"])
 ```
 
 ## Search Strategies
@@ -275,6 +278,9 @@ results = sc.search("user refunds", hops=2, limit=10)  # Expand 2 hops, return 1
 
 # Disable graph expansion
 results = sc.search("user_table", hops=0)  # Only direct matches, no foreign key traversal
+
+# Filter by database schemas
+results = sc.search("user accounts", schemas=["public"])  # Search only public schema
 ```
 
 ## Output Formats
@@ -305,7 +311,7 @@ print(results)  # Formatted markdown
 
 # Access underlying data as dictionary
 data = results.to_dict()
-print(data['results'][0]['table'])  # "users"
+print(data['results'][0]['table'])  # "public.users" (qualified name)
 
 # Override to JSON format
 json_results = sc.search("user payments", output_format="json")
@@ -313,9 +319,9 @@ print(json_results)  # JSON formatted string
 ```
 
 **Markdown output includes:**
-- Table name and relevance score
+- Qualified table name (`schema.table`) and relevance score
 - Primary keys and columns with types/constraints
-- Foreign key relationships
+- Foreign key relationships (with qualified references)
 - Indices and constraints
 - Related tables from graph expansion
 - Matched content chunks
