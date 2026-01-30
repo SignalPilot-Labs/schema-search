@@ -147,7 +147,9 @@ schema-search "postgresql://user:pass@localhost/db" "optional/path/to/config.yml
 
 Optional args: `[config_path] [llm_api_key] [llm_base_url]`
 
-The server exposes `schema_search(query, schemas, hops, limit)` for natural language schema queries.
+The server exposes two tools:
+- `schema_search(query, schemas, catalogs, limit)` - Search tables using natural language
+- `get_schema(schemas, catalogs)` - Get full database schema structure
 
 ## Python Use
 
@@ -190,8 +192,8 @@ results = sc.search("user_table", hops=1, limit=5, search_type="hybrid", output_
 results = sc.search("user accounts", schemas=["public", "billing"])
 
 # Get the full schema structure (useful for backends)
-db_schema = sc.get_schema()  # Returns {schema_name: {table_name: TableSchema}}
-public_schema = sc.get_schema(schema_filter=["public"])  # Filter to specific schemas
+db_schema = sc.get_schema()  # Returns {schema_key: {table_name: TableSchema}}
+public_schema = sc.get_schema(schemas=["public"])  # Filter to specific schemas
 
 ```
 
@@ -214,25 +216,18 @@ engine = create_engine("snowflake://myuser:mypass@xy12345.us-east-1/MYDB/PUBLIC?
 # BigQuery
 engine = create_engine("bigquery://my-project/my-dataset")
 
-# Databricks
+# Databricks (indexes all catalogs, filter at search time)
 token = "dapi..."
 host = "dbc-xyz.cloud.databricks.com"
 http_path = "/sql/1.0/warehouses/abc123"
 
-# Without catalog (indexes all catalogs)
 engine = create_engine(
     f"databricks://token:{token}@{host}?http_path={http_path}",
     connect_args={"user_agent_entry": "schema-search"}
 )
 
-# With catalog (indexes only specified catalog)
-engine = create_engine(
-    f"databricks://token:{token}@{host}?http_path={http_path}&catalog=main",
-    connect_args={"user_agent_entry": "schema-search"}
-)
-
-# Filter at search time using schemas parameter
-results = sc.search("users", schemas=["main.default", "main.analytics"])
+# Filter by catalog/schema at search time
+results = sc.search("users", catalogs=["main"], schemas=["default", "analytics"])
 ```
 
 ## Search Strategies

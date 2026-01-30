@@ -1,10 +1,9 @@
 """Databricks-specific schema extractor using information_schema queries."""
 
 import logging
-from typing import Dict, List, Any, Tuple, Optional
+from typing import Dict, List, Tuple
 
 from sqlalchemy import text
-from sqlalchemy.engine import Engine
 
 from schema_search.extractors.base import BaseExtractor
 from schema_search.types import DBSchema, ColumnInfo, ForeignKeyInfo
@@ -18,11 +17,6 @@ SKIP_CATALOGS = {"system", "samples", "hive_metastore"}
 
 class DatabricksExtractor(BaseExtractor):
     """Extracts schema from Databricks using information_schema queries."""
-
-    def __init__(self, engine: Engine, config: Dict[str, Any]):
-        super().__init__(engine, config)
-        catalog_param = engine.url.query.get("catalog")
-        self.catalog: Optional[str] = catalog_param if isinstance(catalog_param, str) else None
 
     def extract(self) -> DBSchema:
         catalogs = self._get_catalogs()
@@ -56,10 +50,7 @@ class DatabricksExtractor(BaseExtractor):
         return result
 
     def _get_catalogs(self) -> List[str]:
-        """Get catalogs to extract. If catalog specified, use it; otherwise get all."""
-        if self.catalog:
-            return [self.catalog]
-
+        """Get all catalogs to extract."""
         query = text("""
             SELECT catalog_name
             FROM system.information_schema.catalogs
