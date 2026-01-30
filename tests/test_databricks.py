@@ -13,20 +13,9 @@ def databricks_url():
     env_path = Path(__file__).parent / ".env"
     load_dotenv(env_path)
 
-    host = os.getenv("DATABRICKS_HOST")
-    http_path = os.getenv("DATABRICKS_HTTP_PATH")
-    token = os.getenv("DATABRICKS_TOKEN")
-    catalog = os.getenv("DATABRICKS_CATALOG")
-    schema = os.getenv("DATABRICKS_SCHEMA")
-
-    if not all([host, http_path, token, catalog]):
-        pytest.skip(
-            "DATABRICKS_HOST, DATABRICKS_HTTP_PATH, DATABRICKS_TOKEN, or DATABRICKS_CATALOG not set in tests/.env"
-        )
-
-    url = f"databricks://token:{token}@{host}?http_path={http_path}&catalog={catalog}"
-    if schema:
-        url += f"&schema={schema}"
+    url = os.getenv("DATABASE_DATABRICKS_URL")
+    if not url:
+        pytest.skip("DATABASE_DATABRICKS_URL not set in tests/.env")
 
     return url
 
