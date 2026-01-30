@@ -152,7 +152,7 @@ def test_table_identification_with_schema_search(search_engine, llm_config):
             response = search_engine.search(
                 search_query, hops=hops, limit=5, search_type="semantic"
             )
-            for result in response["results"]:
+            for result in response.results:
                 table_name = result["table"]
                 if table_name in seen_tables:
                     continue

@@ -5,8 +5,7 @@ import logging
 from pathlib import Path
 from typing import List, Optional
 
-from schema_search.chunkers import Chunk
-from schema_search.types import DBSchema
+from schema_search.types import Chunk, DBSchema
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +79,7 @@ def load_chunks(cache_dir: Path) -> Optional[List[Chunk]]:
         chunk_data = json.load(f)
         return [
             Chunk(
+                catalog=c.get("catalog"),
                 schema_name=c["schema_name"],
                 table_name=c["table_name"],
                 content=c["content"],
@@ -101,6 +101,7 @@ def save_chunks(cache_dir: Path, chunks: List[Chunk]) -> None:
     with open(chunks_cache, "w") as f:
         chunk_data = [
             {
+                "catalog": c.catalog,
                 "schema_name": c.schema_name,
                 "table_name": c.table_name,
                 "content": c.content,

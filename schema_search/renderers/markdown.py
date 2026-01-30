@@ -71,8 +71,8 @@ class MarkdownRenderer(BaseRenderer):
         lines = []
 
         # Table name with schema
-        qualified_name = f"{schema['schema']}.{schema['name']}"
-        lines.append(f"### {qualified_name}")
+        full_name = f"{schema['schema']}.{schema['name']}"
+        lines.append(f"### {full_name}")
         lines.append("")
 
         # Primary keys
@@ -95,8 +95,8 @@ class MarkdownRenderer(BaseRenderer):
             for fk in foreign_keys:
                 constrained = ", ".join(fk["constrained_columns"])
                 referred = ", ".join(fk["referred_columns"])
-                ref_qualified = f"{fk['referred_schema']}.{fk['referred_table']}"
-                lines.append(f"  - {constrained} -> {ref_qualified}({referred})")
+                ref_table = f"{fk['referred_schema']}.{fk['referred_table']}"
+                lines.append(f"  - {constrained} -> {ref_table}({referred})")
             lines.append("")
 
         # Indices

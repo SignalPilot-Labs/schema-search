@@ -1,9 +1,8 @@
 from typing import List, Optional
 from abc import ABC, abstractmethod
 
-from schema_search.types import DBSchema, SearchResultItem
-from schema_search.chunkers import Chunk
-from schema_search.graph_builder import GraphBuilder, make_table_key
+from schema_search.types import Chunk, DBSchema, SearchResultItem
+from schema_search.graph_builder import GraphBuilder
 from schema_search.rankers.base import BaseRanker
 
 
@@ -34,7 +33,7 @@ class BaseSearchStrategy(ABC):
         initial_chunks = []
         for result in initial_results:
             for chunk in chunks:
-                if chunk.qualified_name() == result["table"]:
+                if chunk.table_key == result["table"]:
                     initial_chunks.append(chunk)
                     break
 
@@ -74,13 +73,12 @@ class BaseSearchStrategy(ABC):
         graph_builder: GraphBuilder,
         hops: int,
     ) -> SearchResultItem:
-        table_key = make_table_key(chunk.schema_name, chunk.table_name)
-        table_schema = schemas[chunk.schema_name][chunk.table_name]
+        table_schema = schemas[chunk.schema_key][chunk.table_name]
 
         return {
-            "table": table_key,
+            "table": chunk.table_key,
             "score": score,
             "schema": table_schema,
             "matched_chunks": [chunk.content],
-            "related_tables": list(graph_builder.get_neighbors(table_key, hops)),
+            "related_tables": list(graph_builder.get_neighbors(chunk.table_key, hops)),
         }

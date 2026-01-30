@@ -4,14 +4,14 @@ from typing import List, Optional
 
 from sqlalchemy.engine import Engine
 
-from schema_search.chunkers import Chunk, create_chunker
-from schema_search.embedding_cache import create_embedding_cache
+from schema_search.chunkers.factory import create_chunker
+from schema_search.embedding_cache.factory import create_embedding_cache
 from schema_search.embedding_cache.bm25 import BM25Cache
-from schema_search.extractors import create_extractor
+from schema_search.extractors.factory import create_extractor
 from schema_search.graph_builder import GraphBuilder
-from schema_search.rankers import create_ranker
-from schema_search.search import create_search_strategy
-from schema_search.types import DBSchema, IndexResult, SearchResult, SearchType
+from schema_search.rankers.factory import create_ranker
+from schema_search.search.factory import create_search_strategy
+from schema_search.types import Chunk, DBSchema, IndexResult, SearchResult, SearchType
 from schema_search.utils.cache import load_chunks, load_schema, save_chunks, save_schema, schema_changed
 from schema_search.utils.config import load_config, validate_dependencies
 from schema_search.utils.utils import setup_logging, time_it
@@ -140,31 +140,44 @@ class SchemaSearch:
             )
         return self._search_strategies[search_type]
 
-    def get_schema(self, schema_filter: Optional[List[str]] = None) -> DBSchema:
+    def get_schema(
+        self,
+        catalogs: Optional[List[str]] = None,
+        schemas: Optional[List[str]] = None,
+    ) -> DBSchema:
         """Get the full schema structure.
 
         Args:
-            schema_filter: Optional list of schema names to include. If None, returns all.
+            catalogs: Optional list of catalog names to include (Databricks only).
+            schemas: Optional list of schema names to include.
 
         Returns:
-            Nested dict: {schema_name: {table_name: TableSchema}}
+            Nested dict: {schema_key: {table_name: TableSchema}}
         """
         if not self.schemas:
             raise ValueError("Must call index() before get_schema()")
 
-        if schema_filter is None:
+        if not catalogs and not schemas:
             return self.schemas
 
-        return {
-            schema_name: tables
-            for schema_name, tables in self.schemas.items()
-            if schema_name in schema_filter
-        }
+        result: DBSchema = {}
+        for schema_key, tables in self.schemas.items():
+            catalog, schema_name = Chunk.parse_schema_key(schema_key)
+
+            if catalogs and catalog not in catalogs:
+                continue
+            if schemas and schema_name not in schemas:
+                continue
+
+            result[schema_key] = tables
+
+        return result
 
     @time_it
     def search(
         self,
         query: str,
+        catalogs: Optional[List[str]] = None,
         schemas: Optional[List[str]] = None,
         hops: Optional[int] = None,
         limit: Optional[int] = None,
@@ -175,7 +188,8 @@ class SchemaSearch:
 
         Args:
             query: Search query
-            schemas: Optional list of schema names to search. If None, searches all.
+            catalogs: Optional list of catalog names to search (Databricks only).
+            schemas: Optional list of schema names to search.
             hops: Graph traversal hops
             limit: Max results
             search_type: bm25, semantic, fuzzy, or hybrid
@@ -192,7 +206,7 @@ class SchemaSearch:
         resolved_format: str = output_format or self.config["output"]["format"]
         resolved_type: str = search_type or self.config["search"]["strategy"]
 
-        logger.debug(f"Searching: {query} (schemas={schemas}, hops={hops})")
+        logger.debug(f"Searching: {query} (catalogs={catalogs}, schemas={schemas}, hops={hops})")
 
         if resolved_type in ["semantic", "hybrid"]:
             self._ensure_embeddings_loaded()
@@ -200,11 +214,7 @@ class SchemaSearch:
         if resolved_type in ["bm25", "hybrid"]:
             self._ensure_bm25_built()
 
-        # Filter chunks by schema if specified
-        if schemas:
-            search_chunks = [c for c in self.chunks if c.schema_name in schemas]
-        else:
-            search_chunks = self.chunks
+        search_chunks = self._filter_chunks(catalogs, schemas)
 
         strategy = self._get_search_strategy(resolved_type)
 
@@ -219,3 +229,20 @@ class SchemaSearch:
             latency_sec=0.0,
             output_format=resolved_format
         )
+
+    def _filter_chunks(
+        self,
+        catalogs: Optional[List[str]],
+        schemas: Optional[List[str]],
+    ) -> List[Chunk]:
+        """Filter chunks by catalog and/or schema."""
+        if not catalogs and not schemas:
+            return self.chunks
+
+        filtered = self.chunks
+        if catalogs:
+            filtered = [c for c in filtered if c.catalog in catalogs]
+        if schemas:
+            filtered = [c for c in filtered if c.schema_name in schemas]
+
+        return filtered

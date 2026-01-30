@@ -1,10 +1,9 @@
 from typing import List, Optional
 
 from schema_search.search.base import BaseSearchStrategy
-from schema_search.types import DBSchema, SearchResultItem
-from schema_search.chunkers import Chunk
+from schema_search.types import Chunk, DBSchema, SearchResultItem
 from schema_search.graph_builder import GraphBuilder
-from schema_search.embedding_cache import BaseEmbeddingCache
+from schema_search.embedding_cache.base import BaseEmbeddingCache
 from schema_search.rankers.base import BaseRanker
 
 

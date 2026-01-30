@@ -60,22 +60,23 @@ class GraphBuilder:
         with open(cache_file, "wb") as f:
             pickle.dump(self.graph, f)
 
-    def get_neighbors(self, qualified_table: str, hops: int) -> Set[str]:
-        if qualified_table not in self.graph:
+    def get_neighbors(self, table_key: str, hops: int) -> Set[str]:
+        """Get neighboring tables within N hops via foreign key relationships."""
+        if table_key not in self.graph:
             return set()
 
         neighbors: Set[str] = set()
 
         forward = nx.single_source_shortest_path_length(
-            self.graph, qualified_table, cutoff=hops
+            self.graph, table_key, cutoff=hops
         )
         neighbors.update(forward.keys())
 
         backward = nx.single_source_shortest_path_length(
-            self.graph.reverse(), qualified_table, cutoff=hops
+            self.graph.reverse(), table_key, cutoff=hops
         )
         neighbors.update(backward.keys())
 
-        neighbors.discard(qualified_table)
+        neighbors.discard(table_key)
 
         return neighbors

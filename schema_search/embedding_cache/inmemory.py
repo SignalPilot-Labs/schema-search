@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, TYPE_CHECKING
 
 import numpy as np
 
-from schema_search.chunkers import Chunk
+from schema_search.types import Chunk
 from schema_search.embedding_cache.base import BaseEmbeddingCache
 from schema_search.metrics import get_metric
 from schema_search.utils.utils import lazy_import_check

@@ -2,7 +2,7 @@ from typing import Dict, List, Tuple
 from collections import defaultdict
 from abc import ABC, abstractmethod
 
-from schema_search.chunkers import Chunk
+from schema_search.types import Chunk
 
 
 class BaseRanker(ABC):

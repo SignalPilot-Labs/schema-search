@@ -37,14 +37,14 @@ class DatabricksExtractor(BaseExtractor):
 
         result: DBSchema = {}
         for catalog, schema, table_name in tables:
-            qualified_schema = f"{catalog}.{schema}"
-            if qualified_schema not in result:
-                result[qualified_schema] = {}
+            schema_key = f"{catalog}.{schema}"
+            if schema_key not in result:
+                result[schema_key] = {}
 
             table_key: TableKey = (catalog, schema, table_name)
-            result[qualified_schema][table_name] = {
+            result[schema_key][table_name] = {
                 "name": table_name,
-                "schema": qualified_schema,
+                "schema": schema_key,
                 "primary_keys": all_primary_keys.get(table_key, []),
                 "columns": all_columns.get(table_key),
                 "foreign_keys": all_foreign_keys.get(table_key),

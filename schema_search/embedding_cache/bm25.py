@@ -5,7 +5,7 @@ import numpy as np
 
 import bm25s
 
-from schema_search.chunkers import Chunk
+from schema_search.types import Chunk
 
 logging.getLogger("bm25s").setLevel(logging.WARNING)
 

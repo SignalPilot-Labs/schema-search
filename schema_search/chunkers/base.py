@@ -1,36 +1,26 @@
-from typing import List
-from dataclasses import dataclass
+from typing import List, Optional
 from abc import ABC, abstractmethod
 
 from tqdm import tqdm
 
-from schema_search.types import TableSchema, DBSchema
-
-
-@dataclass
-class Chunk:
-    schema_name: str
-    table_name: str
-    content: str
-    chunk_id: str
-    token_count: int
-
-    def qualified_name(self) -> str:
-        return f"{self.schema_name}.{self.table_name}"
+from schema_search.types import Chunk, TableSchema, DBSchema
 
 
 class BaseChunker(ABC):
+    """Base class for schema chunkers."""
+
     def __init__(self, max_tokens: int, overlap_tokens: int, show_progress: bool = False):
         self.max_tokens = max_tokens
         self.overlap_tokens = overlap_tokens
         self.show_progress = show_progress
 
     def chunk_schemas(self, schemas: DBSchema) -> List[Chunk]:
+        """Chunk all schemas into searchable pieces."""
         chunks: List[Chunk] = []
 
         tables = [
-            (schema_name, table_name, table_schema)
-            for schema_name, tables in schemas.items()
+            (schema_key, table_name, table_schema)
+            for schema_key, tables in schemas.items()
             for table_name, table_schema in tables.items()
         ]
 
@@ -38,8 +28,9 @@ class BaseChunker(ABC):
         if self.show_progress:
             iterator = tqdm(tables, desc="Chunking tables", unit="table")
 
-        for schema_name, table_name, table_schema in iterator:
-            table_chunks = self._chunk_table(schema_name, table_name, table_schema)
+        for schema_key, table_name, table_schema in iterator:
+            catalog, schema_name = Chunk.parse_schema_key(schema_key)
+            table_chunks = self._chunk_table(catalog, schema_name, table_name, table_schema)
             chunks.extend(table_chunks)
 
         return chunks
@@ -49,12 +40,18 @@ class BaseChunker(ABC):
         pass
 
     def _chunk_table(
-        self, schema_name: str, table_name: str, table_schema: TableSchema
+        self,
+        catalog: Optional[str],
+        schema_name: str,
+        table_name: str,
+        table_schema: TableSchema,
     ) -> List[Chunk]:
+        """Chunk a single table's schema into searchable pieces."""
         content = self._generate_content(table_name, table_schema)
         lines = content.split("\n")
 
-        header = f"Schema: {schema_name}\nTable: {table_name}"
+        schema_key = f"{catalog}.{schema_name}" if catalog else schema_name
+        header = f"Schema: {schema_key}\nTable: {table_name}"
         header_tokens = self._estimate_tokens(header)
 
         chunks: List[Chunk] = []
@@ -72,10 +69,11 @@ class BaseChunker(ABC):
                 chunk_content = "\n".join(current_chunk_lines)
                 chunks.append(
                     Chunk(
+                        catalog=catalog,
                         schema_name=schema_name,
                         table_name=table_name,
                         content=chunk_content,
-                        chunk_id=f"{schema_name}.{table_name}.{chunk_idx}",
+                        chunk_id=f"{schema_key}.{table_name}.{chunk_idx}",
                         token_count=current_tokens,
                     )
                 )
@@ -91,10 +89,11 @@ class BaseChunker(ABC):
             chunk_content = "\n".join(current_chunk_lines)
             chunks.append(
                 Chunk(
+                    catalog=catalog,
                     schema_name=schema_name,
                     table_name=table_name,
                     content=chunk_content,
-                    chunk_id=f"{schema_name}.{table_name}.{chunk_idx}",
+                    chunk_id=f"{schema_key}.{table_name}.{chunk_idx}",
                     token_count=current_tokens,
                 )
             )

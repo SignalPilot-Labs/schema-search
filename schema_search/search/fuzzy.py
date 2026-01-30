@@ -3,8 +3,7 @@ from typing import List, Optional, Tuple
 from rapidfuzz import fuzz
 
 from schema_search.search.base import BaseSearchStrategy
-from schema_search.types import DBSchema, TableSchema, SearchResultItem
-from schema_search.chunkers import Chunk
+from schema_search.types import Chunk, DBSchema, TableSchema, SearchResultItem
 from schema_search.graph_builder import GraphBuilder, make_table_key
 from schema_search.rankers.base import BaseRanker
 

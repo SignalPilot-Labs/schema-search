@@ -1,4 +1,4 @@
-from typing import TypedDict, List, Literal, Optional, Dict
+from typing import TypedDict, List, Literal, Optional, Dict, Tuple
 from dataclasses import dataclass, field
 
 
@@ -47,8 +47,47 @@ class TableSchema(TypedDict):
     check_constraints: Optional[List[CheckConstraintInfo]]
 
 
-# Database schema: {schema_name: {table_name: TableSchema}}
+# Database schema: {schema_key: {table_name: TableSchema}}
+# schema_key is "catalog.schema" for Databricks, "schema" for others
 DBSchema = Dict[str, Dict[str, TableSchema]]
+
+
+@dataclass
+class Chunk:
+    """A chunk of table schema content for indexing and search."""
+
+    catalog: Optional[str]
+    schema_name: str
+    table_name: str
+    content: str
+    chunk_id: str
+    token_count: int
+
+    @property
+    def schema_key(self) -> str:
+        """Key for this chunk's schema (catalog.schema or schema)."""
+        if self.catalog:
+            return f"{self.catalog}.{self.schema_name}"
+        return self.schema_name
+
+    @property
+    def table_key(self) -> str:
+        """Key for this chunk's table (catalog.schema.table or schema.table)."""
+        if self.catalog:
+            return f"{self.catalog}.{self.schema_name}.{self.table_name}"
+        return f"{self.schema_name}.{self.table_name}"
+
+    @staticmethod
+    def parse_schema_key(schema_key: str) -> Tuple[Optional[str], str]:
+        """Parse schema key into (catalog, schema).
+
+        For Databricks: "samples.bakehouse" -> ("samples", "bakehouse")
+        For PostgreSQL: "public" -> (None, "public")
+        """
+        if "." in schema_key:
+            catalog, schema = schema_key.split(".", 1)
+            return catalog, schema
+        return None, schema_key
 
 
 class IndexResult(TypedDict):

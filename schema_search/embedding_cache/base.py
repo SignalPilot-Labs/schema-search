@@ -4,7 +4,7 @@ from typing import Dict, List
 
 import numpy as np
 
-from schema_search.chunkers import Chunk
+from schema_search.types import Chunk
 
 
 class BaseEmbeddingCache(ABC):
