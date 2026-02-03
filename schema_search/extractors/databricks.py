@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 TableKey = Tuple[str, str, str]  # (catalog, schema, table)
 
-SKIP_CATALOGS = {"system", "samples", "hive_metastore"}
+SKIP_CATALOGS = {"system"}  # system catalog is not a user schema
 
 
 class DatabricksExtractor(BaseExtractor):
@@ -27,7 +27,9 @@ class DatabricksExtractor(BaseExtractor):
 
         all_columns = self._get_all_columns(catalogs) if self._include_columns() else {}
         all_primary_keys = self._get_all_primary_keys(catalogs)
-        all_foreign_keys = self._get_all_foreign_keys(catalogs) if self._include_foreign_keys() else {}
+        all_foreign_keys = (
+            self._get_all_foreign_keys(catalogs) if self._include_foreign_keys() else {}
+        )
 
         result: DBSchema = {}
         for catalog, schema, table_name in tables:
@@ -51,10 +53,12 @@ class DatabricksExtractor(BaseExtractor):
 
     def _get_catalogs(self) -> List[str]:
         """Get all catalogs to extract."""
-        query = text("""
+        query = text(
+            """
             SELECT catalog_name
             FROM system.information_schema.catalogs
-        """)
+        """
+        )
         with self.engine.connect() as conn:
             result = conn.execute(query)
             return [row[0] for row in result if row[0] not in SKIP_CATALOGS]
@@ -65,11 +69,13 @@ class DatabricksExtractor(BaseExtractor):
 
         with self.engine.connect() as conn:
             for catalog in catalogs:
-                query = text("""
+                query = text(
+                    """
                     SELECT table_catalog, table_schema, table_name
                     FROM system.information_schema.tables
                     WHERE table_catalog = :catalog
-                """)
+                """
+                )
                 result = conn.execute(query, {"catalog": catalog})
                 for row in result:
                     if not self._should_skip_schema(row[1]):
@@ -84,7 +90,8 @@ class DatabricksExtractor(BaseExtractor):
 
         with self.engine.connect() as conn:
             for catalog in catalogs:
-                query = text(f"""
+                query = text(
+                    f"""
                     SELECT
                         table_schema,
                         table_name,
@@ -94,19 +101,22 @@ class DatabricksExtractor(BaseExtractor):
                         column_default
                     FROM {catalog}.information_schema.columns
                     ORDER BY table_schema, table_name, ordinal_position
-                """)
+                """
+                )
                 result = conn.execute(query)
                 for row in result:
                     if self._should_skip_schema(row[0]):
                         continue
 
                     table_key: TableKey = (catalog, row[0], row[1])
-                    columns_by_table.setdefault(table_key, []).append({
-                        "name": row[2],
-                        "type": row[3],
-                        "nullable": row[4] == "YES",
-                        "default": row[5],
-                    })
+                    columns_by_table.setdefault(table_key, []).append(
+                        {
+                            "name": row[2],
+                            "type": row[3],
+                            "nullable": row[4] == "YES",
+                            "default": row[5],
+                        }
+                    )
 
         return columns_by_table
 
@@ -115,7 +125,8 @@ class DatabricksExtractor(BaseExtractor):
 
         with self.engine.connect() as conn:
             for catalog in catalogs:
-                query = text(f"""
+                query = text(
+                    f"""
                     SELECT
                         tc.table_schema,
                         tc.table_name,
@@ -127,7 +138,8 @@ class DatabricksExtractor(BaseExtractor):
                         AND tc.table_name = kcu.table_name
                     WHERE tc.constraint_type = 'PRIMARY KEY'
                     ORDER BY tc.table_schema, tc.table_name, kcu.ordinal_position
-                """)
+                """
+                )
                 result = conn.execute(query)
                 for row in result:
                     if self._should_skip_schema(row[0]):
@@ -138,12 +150,15 @@ class DatabricksExtractor(BaseExtractor):
 
         return pks_by_table
 
-    def _get_all_foreign_keys(self, catalogs: List[str]) -> Dict[TableKey, List[ForeignKeyInfo]]:
+    def _get_all_foreign_keys(
+        self, catalogs: List[str]
+    ) -> Dict[TableKey, List[ForeignKeyInfo]]:
         fks_by_table: Dict[TableKey, Dict[str, ForeignKeyInfo]] = {}
 
         with self.engine.connect() as conn:
             for catalog in catalogs:
-                query = text(f"""
+                query = text(
+                    f"""
                     SELECT
                         tc.table_schema,
                         tc.table_name,
@@ -162,7 +177,8 @@ class DatabricksExtractor(BaseExtractor):
                         ON rc.unique_constraint_name = ccu.constraint_name
                         AND rc.unique_constraint_schema = ccu.constraint_schema
                     WHERE tc.constraint_type = 'FOREIGN KEY'
-                """)
+                """
+                )
                 result = conn.execute(query)
                 for row in result:
                     if self._should_skip_schema(row[0]):
@@ -176,13 +192,18 @@ class DatabricksExtractor(BaseExtractor):
                     if table_key not in fks_by_table:
                         fks_by_table[table_key] = {}
 
-                    fks_by_table[table_key].setdefault(ref_key, {
-                        "constrained_columns": [],
-                        "referred_schema": ref_schema,
-                        "referred_table": ref_table,
-                        "referred_columns": [],
-                    })
-                    fks_by_table[table_key][ref_key]["constrained_columns"].append(row[2])
+                    fks_by_table[table_key].setdefault(
+                        ref_key,
+                        {
+                            "constrained_columns": [],
+                            "referred_schema": ref_schema,
+                            "referred_table": ref_table,
+                            "referred_columns": [],
+                        },
+                    )
+                    fks_by_table[table_key][ref_key]["constrained_columns"].append(
+                        row[2]
+                    )
                     fks_by_table[table_key][ref_key]["referred_columns"].append(row[5])
 
         return {k: list(v.values()) for k, v in fks_by_table.items()}
