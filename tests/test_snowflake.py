@@ -10,36 +10,36 @@ from schema_search.utils.utils import create_engine_from_url
 
 
 @pytest.fixture(scope="module")
-def databricks_url() -> str:
+def snowflake_url() -> str:
     env_path = Path(__file__).parent / ".env"
     load_dotenv(env_path)
 
-    url = os.getenv("DATABASE_DATABRICKS_URL")
+    url = os.getenv("DATABASE_SNOWFLAKE_URL")
     if not url:
-        pytest.skip("DATABASE_DATABRICKS_URL not set in tests/.env")
+        pytest.skip("DATABASE_SNOWFLAKE_URL not set in tests/.env")
 
     return url
 
 
 @pytest.fixture(scope="module")
-def databricks_engine(databricks_url: str) -> Engine:
-    return create_engine_from_url(databricks_url)
+def snowflake_engine(snowflake_url: str) -> Engine:
+    return create_engine_from_url(snowflake_url)
 
 
 @pytest.mark.timeout(60)
-def test_databricks_basic_query(databricks_engine):
-    """Test basic Databricks connectivity."""
-    print("\nTesting basic Databricks query...")
-    print(f"Engine URL: {databricks_engine.url}")
+def test_snowflake_basic_query(snowflake_engine: Engine) -> None:
+    """Test basic Snowflake connectivity."""
+    print("\nTesting basic Snowflake query...")
+    print(f"Engine URL: {snowflake_engine.url}")
     print("Attempting to connect...")
 
     try:
-        with databricks_engine.connect() as conn:
+        with snowflake_engine.connect() as conn:
             print("Connection established, executing query...")
             result = conn.execute(text("SELECT 1 as test"))
             print("Query executed, fetching result...")
             row = result.fetchone()
-            assert row[0] == 1
+            assert row is not None and row[0] == 1
         print("✓ Basic query works")
     except Exception as e:
         print(f"✗ Error: {e}")
@@ -48,19 +48,18 @@ def test_databricks_basic_query(databricks_engine):
         raise
 
 
-def test_databricks_list_tables(databricks_engine):
-    """Test listing tables from Databricks."""
-    print("\nListing tables from Databricks...")
+def test_snowflake_list_tables(snowflake_engine: Engine) -> None:
+    """Test listing tables from Snowflake."""
+    print("\nListing tables from Snowflake...")
 
     query = text("""
         SELECT table_catalog, table_schema, table_name
-        FROM system.information_schema.tables
-        WHERE table_catalog NOT IN ('system', 'samples', 'hive_metastore')
-        AND table_schema NOT IN ('information_schema', 'sys')
+        FROM information_schema.tables
+        WHERE table_schema NOT IN ('INFORMATION_SCHEMA')
         LIMIT 5
     """)
 
-    with databricks_engine.connect() as conn:
+    with snowflake_engine.connect() as conn:
         result = conn.execute(query)
         rows = list(result)
 
@@ -71,10 +70,10 @@ def test_databricks_list_tables(databricks_engine):
     assert len(rows) > 0, "No tables found"
 
 
-def test_databricks_connection(databricks_engine):
+def test_snowflake_connection(snowflake_engine: Engine) -> None:
     """Test full SchemaSearch indexing and search."""
-    print("\nTesting SchemaSearch with Databricks...")
-    search = SchemaSearch(databricks_engine)
+    print("\nTesting SchemaSearch with Snowflake...")
+    search = SchemaSearch(snowflake_engine)
 
     print("Indexing...")
     search.index(force=True)

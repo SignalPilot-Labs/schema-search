@@ -3,9 +3,9 @@ import logging
 from typing import List, Optional
 
 from fastmcp import FastMCP
-from sqlalchemy import create_engine
 
 from schema_search import SchemaSearch
+from schema_search.utils.utils import create_engine_from_url
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -69,7 +69,7 @@ def run_server(
     llm_api_key: Optional[str] = None,
     llm_base_url: Optional[str] = None,
 ):
-    engine = create_engine(database_url)
+    engine = create_engine_from_url(database_url)
 
     mcp.search_engine = SchemaSearch(  # type: ignore
         engine,
