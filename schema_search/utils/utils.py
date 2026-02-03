@@ -1,10 +1,14 @@
 """Utility functions for schema-search."""
 
 import logging
+import os
 import time
 from functools import wraps
 from importlib import import_module
 from typing import Any, Dict
+from urllib.parse import parse_qs, urlparse, urlunparse
+
+from sqlalchemy import Engine, create_engine
 
 from schema_search.types import SearchResult
 
@@ -65,3 +69,111 @@ def setup_logging(config: Dict[str, Any]) -> None:
         force=True,
     )
     logger.setLevel(level)
+
+
+def _load_snowflake_private_key(key_path: str) -> bytes:
+    """Load private key from file for Snowflake key-pair authentication.
+
+    Args:
+        key_path: Path to the private key file (supports ~ expansion).
+
+    Returns:
+        Private key bytes in DER format for Snowflake connector.
+    """
+    serialization = lazy_import_check(
+        "cryptography.hazmat.primitives.serialization",
+        "snowflake",
+        "Snowflake key-pair authentication",
+    )
+    default_backend = lazy_import_check(
+        "cryptography.hazmat.backends",
+        "snowflake",
+        "Snowflake key-pair authentication",
+    ).default_backend
+
+    with open(os.path.expanduser(key_path), "rb") as key_file:
+        private_key = serialization.load_pem_private_key(
+            key_file.read(),
+            password=None,
+            backend=default_backend(),
+        )
+    return private_key.private_bytes(
+        encoding=serialization.Encoding.DER,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+
+
+def _parse_snowflake_url(url: str) -> tuple[str, str | None]:
+    """Parse Snowflake URL and extract private_key_path parameter.
+
+    Args:
+        url: Snowflake connection URL with optional private_key_path param.
+
+    Returns:
+        Tuple of (clean_url without private_key_path, key_path or None).
+    """
+    parsed = urlparse(url)
+    params = parse_qs(parsed.query)
+
+    key_path = params.pop("private_key_path", [None])[0]
+
+    new_query = "&".join(f"{k}={v[0]}" for k, v in params.items())
+    clean_url = urlunparse(parsed._replace(query=new_query))
+
+    return clean_url, key_path
+
+
+def _create_snowflake_engine(url: str) -> Engine:
+    """Create SQLAlchemy engine for Snowflake with key-pair auth support.
+
+    Args:
+        url: Snowflake URL, optionally with private_key_path parameter.
+
+    Returns:
+        SQLAlchemy Engine configured for Snowflake.
+    """
+    clean_url, key_path = _parse_snowflake_url(url)
+
+    if key_path:
+        private_key = _load_snowflake_private_key(key_path)
+        return create_engine(clean_url, connect_args={"private_key": private_key})
+
+    return create_engine(clean_url)
+
+
+def _create_databricks_engine(url: str) -> Engine:
+    """Create SQLAlchemy engine for Databricks with required connect_args.
+
+    Args:
+        url: Databricks connection URL.
+
+    Returns:
+        SQLAlchemy Engine configured for Databricks.
+    """
+    return create_engine(url, connect_args={"user_agent_entry": "schema-search"})
+
+
+def create_engine_from_url(url: str) -> Engine:
+    """Create SQLAlchemy engine from URL with DB-specific handling.
+
+    Handles special cases:
+    - Snowflake: Extracts private_key_path param and loads key for auth.
+    - Databricks: Adds required user_agent_entry to connect_args.
+    - Others: Standard create_engine call.
+
+    Args:
+        url: Database connection URL.
+
+    Returns:
+        SQLAlchemy Engine for the specified database.
+    """
+    parsed = urlparse(url)
+    dialect = parsed.scheme.split("+")[0]
+
+    if dialect == "snowflake":
+        return _create_snowflake_engine(url)
+    elif dialect == "databricks":
+        return _create_databricks_engine(url)
+    else:
+        return create_engine(url)

@@ -210,8 +210,8 @@ engine = create_engine("postgresql://postgres:mypass@localhost:5432/mydb")
 # MySQL
 engine = create_engine("mysql+pymysql://root:mypass@localhost:3306/mydb")
 
-# Snowflake
-engine = create_engine("snowflake://myuser:mypass@xy12345.us-east-1/MYDB/PUBLIC?warehouse=COMPUTE_WH&role=ANALYST")
+# Snowflake (key-pair auth required - see "Snowflake Key-Pair Authentication" section below)
+engine = create_engine("snowflake://myuser@xy12345/MYDB?warehouse=COMPUTE_WH&private_key_path=~/.snowflake/rsa_key.p8")
 
 # BigQuery
 engine = create_engine("bigquery://my-project/my-dataset")
@@ -352,6 +352,31 @@ sc = SchemaSearch(
 6. Return top tables with full schema and relationships
 
 Cache stored in `/tmp/.schema_search_cache/` (configurable in `config.yml`)
+
+## Snowflake Key-Pair Authentication
+
+Snowflake accounts typically require MFA, so key-pair authentication is needed for programmatic access.
+
+**1. Generate RSA key pair:**
+```bash
+mkdir -p ~/.snowflake
+openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out ~/.snowflake/rsa_key.p8 -nocrypt
+openssl rsa -in ~/.snowflake/rsa_key.p8 -pubout -out ~/.snowflake/rsa_key.pub
+```
+
+**2. Get public key and add to Snowflake:**
+```bash
+cat ~/.snowflake/rsa_key.pub | grep -v "PUBLIC KEY" | tr -d '\n'
+```
+
+```sql
+ALTER USER YOUR_USERNAME SET RSA_PUBLIC_KEY='paste_key_here';
+```
+
+**3. Use `private_key_path` in connection URL:**
+```
+snowflake://USER@ACCOUNT/DB?warehouse=WH&private_key_path=~/.snowflake/rsa_key.p8
+```
 
 ## License
 

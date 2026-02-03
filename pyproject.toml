@@ -42,6 +42,7 @@ mysql = ["pymysql>=1.0.0"]
 snowflake = [
     "snowflake-sqlalchemy>=1.4.0",
     "snowflake-connector-python>=3.0.0",
+    "cryptography>=42.0.0",
 ]
 bigquery = ["sqlalchemy-bigquery>=1.6.0"]
 databricks = [
