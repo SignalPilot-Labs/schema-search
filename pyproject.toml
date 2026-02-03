@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "schema-search"
-version = "3.0.2"
+version = "3.1.0"
 description = "Natural language database schema search with graph-aware semantic retrieval"
 readme = "README.md"
 license = "MIT"
