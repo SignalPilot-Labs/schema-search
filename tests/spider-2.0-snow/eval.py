@@ -9,7 +9,7 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List, Optional
 from urllib.parse import quote_plus
 
 import anthropic
@@ -60,13 +60,13 @@ class ModeStats:
 
     succeeded: int = 0
     failed: int = 0
-    tool_calls: list = field(default_factory=list)
-    latencies: list = field(default_factory=list)
+    tool_calls: List[int] = field(default_factory=list)
+    latencies: List[float] = field(default_factory=list)
     # Paired binary outcomes per instance_id (1=sql generated, 0=error)
-    outcomes: dict = field(default_factory=dict)
+    outcomes: Dict[str, int] = field(default_factory=dict)
 
 
-def load_instances(jsonl_path: Path) -> list:
+def load_instances(jsonl_path: Path) -> List[Instance]:
     """Load instances from spider2-snow.jsonl."""
     instances = []
     with open(jsonl_path) as f:
@@ -83,7 +83,7 @@ def load_instances(jsonl_path: Path) -> list:
     return instances
 
 
-def group_by_db_id(instances: list) -> dict:
+def group_by_db_id(instances: List[Instance]) -> Dict[str, List[Instance]]:
     """Group instances by db_id to minimize re-indexing."""
     groups = defaultdict(list)
     for inst in instances:
@@ -193,7 +193,7 @@ def compute_paired_stats(stats_a: ModeStats, stats_b: ModeStats) -> dict:
     }
 
 
-def print_statistical_report(mode_stats: dict, output_dir: Path) -> None:
+def print_statistical_report(mode_stats: Dict[str, ModeStats], output_dir: Path) -> None:
     """Print and save statistical comparison report."""
     print(f"\n{'='*60}")
     print("STATISTICAL REPORT")
@@ -232,120 +232,127 @@ def print_statistical_report(mode_stats: dict, output_dir: Path) -> None:
             print(f"\n  Report saved to: {report_path}")
 
 
-def run_evaluation(args) -> None:
-    """Run the full evaluation pipeline."""
+def _instance_already_done(instance_id: str, mode: str, output_dir: Path) -> bool:
+    """Check if an instance result already exists (for resumability)."""
+    sql_path = output_dir / mode / f"{instance_id}.sql"
+    if not sql_path.exists():
+        return False
+    content = sql_path.read_text().strip()
+    return len(content) > 0
+
+
+def _load_api_key() -> str:
+    """Load and validate the Anthropic API key from .env."""
     env_path = Path(__file__).parent.parent / ".env"
     load_dotenv(env_path)
-
     api_key = os.getenv("LLM_API_KEY")
     if not api_key:
         print("ERROR: LLM_API_KEY not set in tests/.env")
         sys.exit(1)
     if "=" in api_key:
         api_key = api_key.split("=", 1)[1]
+    return api_key
 
-    credential = load_snowflake_credential(CREDENTIAL_PATH)
-    client = anthropic.Anthropic(api_key=api_key)
-    system_prompt = load_system_prompt()
 
-    instances = load_instances(JSONL_PATH)
-    print(f"Loaded {len(instances)} instances")
-
+def _filter_instances(
+    instances: List[Instance], args: argparse.Namespace
+) -> List[Instance]:
+    """Apply db_filter and limit to instance list."""
     if args.db_filter:
         filter_set = set(args.db_filter)
         instances = [i for i in instances if i.db_id in filter_set]
         print(f"Filtered to {len(instances)} instances for db_ids: {args.db_filter}")
-
     if args.limit:
         instances = instances[: args.limit]
         print(f"Limited to {args.limit} instances")
+    return instances
 
-    grouped = group_by_db_id(instances)
-    print(f"Spanning {len(grouped)} unique databases")
 
-    modes = args.modes
-    output_dir = Path(args.output_dir)
+def _index_database(
+    credential: dict, db_id: str
+) -> tuple["Engine", SchemaSearch]:
+    """Connect to Snowflake and index a database's schema.
+
+    Returns:
+        Tuple of (engine, search_engine).
+
+    Raises:
+        Exception: If connection or indexing fails.
+    """
+    snowflake_url = build_snowflake_url(credential, db_id)
+    engine = create_engine_from_url(snowflake_url)
+    search_engine = SchemaSearch(engine)
+    t0 = time.time()
+    search_engine.index(force=False)
+    print(f"  Indexed in {time.time() - t0:.1f}s")
+    return engine, search_engine
+
+
+def _record_failure(
+    instance_id: str, modes: List[str], mode_stats: Dict[str, ModeStats],
+    output_dir: Path,
+) -> None:
+    """Record a failed instance across all modes."""
     for mode in modes:
-        (output_dir / mode).mkdir(parents=True, exist_ok=True)
+        save_sql("", instance_id, output_dir / mode)
+        mode_stats[mode].failed += 1
+        mode_stats[mode].outcomes[instance_id] = 0
 
-    mode_stats = {m: ModeStats() for m in modes}
-    skipped_dbs = []
-    processed = 0
-    total = len(instances)
 
-    for db_id, db_instances in grouped.items():
-        print(f"\n{'='*60}")
-        print(f"Database: {db_id} ({len(db_instances)} instances)")
-        print(f"{'='*60}")
+def _run_instance_mode(
+    inst: Instance, mode: str, search_engine: SchemaSearch,
+    system_prompt: str, client: anthropic.Anthropic, mode_stats: Dict[str, ModeStats],
+    output_dir: Path,
+) -> None:
+    """Run a single instance in a single mode and record results."""
+    if _instance_already_done(inst.instance_id, mode, output_dir):
+        mode_stats[mode].succeeded += 1
+        mode_stats[mode].outcomes[inst.instance_id] = 1
+        print(f"  [{mode}] {inst.instance_id}: SKIP (already exists)")
+        return
 
-        snowflake_url = build_snowflake_url(credential, db_id)
-        engine = None
-        search_engine = None
+    ext_knowledge = load_external_knowledge(inst.external_knowledge)
+    try:
+        t0 = time.time()
+        result = run_agent(
+            instance_id=inst.instance_id,
+            instruction=inst.instruction,
+            external_knowledge=ext_knowledge,
+            search_engine=search_engine,
+            system_prompt=system_prompt,
+            client=client,
+            db_id=inst.db_id,
+            tools=MODE_TOOLS[mode],
+        )
+        latency = time.time() - t0
 
-        try:
-            engine = create_engine_from_url(snowflake_url)
-            search_engine = SchemaSearch(engine)
-            t0 = time.time()
-            search_engine.index(force=False)
-            print(f"  Indexed in {time.time() - t0:.1f}s")
-        except Exception as e:
-            print(f"  SKIP: Failed to index {db_id}: {e}")
-            skipped_dbs.append(db_id)
-            for inst in db_instances:
-                for mode in modes:
-                    save_sql("", inst.instance_id, output_dir / mode)
-                    mode_stats[mode].failed += 1
-                    mode_stats[mode].outcomes[inst.instance_id] = 0
-            processed += len(db_instances)
-            if engine:
-                engine.dispose()
-            continue
+        save_sql(result.sql, inst.instance_id, output_dir / mode)
+        mode_stats[mode].latencies.append(latency)
+        mode_stats[mode].tool_calls.append(result.tool_calls_count)
 
-        for inst in db_instances:
-            ext_knowledge = load_external_knowledge(inst.external_knowledge)
-            processed += 1
+        if result.error:
+            mode_stats[mode].failed += 1
+            mode_stats[mode].outcomes[inst.instance_id] = 0
+            status = f"FAIL ({result.error})"
+        else:
+            mode_stats[mode].succeeded += 1
+            mode_stats[mode].outcomes[inst.instance_id] = 1
+            status = f"OK (tools={result.tool_calls_count}, {latency:.1f}s)"
 
-            for mode in modes:
-                try:
-                    t0 = time.time()
-                    result = run_agent(
-                        instance_id=inst.instance_id,
-                        instruction=inst.instruction,
-                        external_knowledge=ext_knowledge,
-                        search_engine=search_engine,
-                        system_prompt=system_prompt,
-                        client=client,
-                        db_id=db_id,
-                        tools=MODE_TOOLS[mode],
-                    )
-                    latency = time.time() - t0
+        print(f"  [{mode}] {inst.instance_id}: {status}")
 
-                    save_sql(result.sql, inst.instance_id, output_dir / mode)
-                    mode_stats[mode].latencies.append(latency)
-                    mode_stats[mode].tool_calls.append(result.tool_calls_count)
+    except Exception as e:
+        save_sql("", inst.instance_id, output_dir / mode)
+        mode_stats[mode].failed += 1
+        mode_stats[mode].outcomes[inst.instance_id] = 0
+        print(f"  [{mode}] {inst.instance_id}: ERROR {e}")
 
-                    if result.error:
-                        mode_stats[mode].failed += 1
-                        mode_stats[mode].outcomes[inst.instance_id] = 0
-                        status = f"FAIL ({result.error})"
-                    else:
-                        mode_stats[mode].succeeded += 1
-                        mode_stats[mode].outcomes[inst.instance_id] = 1
-                        status = f"OK (tools={result.tool_calls_count}, {latency:.1f}s)"
 
-                    print(f"  [{mode}] {inst.instance_id}: {status}")
-
-                except Exception as e:
-                    save_sql("", inst.instance_id, output_dir / mode)
-                    mode_stats[mode].failed += 1
-                    mode_stats[mode].outcomes[inst.instance_id] = 0
-                    print(f"  [{mode}] {inst.instance_id}: ERROR {e}")
-
-            if processed % 10 == 0:
-                print(f"\n  Progress: {processed}/{total}")
-
-        engine.dispose()
-
+def _print_summary(
+    total: int, skipped_dbs: List[str], mode_stats: Dict[str, ModeStats],
+    modes: List[str], output_dir: Path,
+) -> None:
+    """Print final summary and evaluation instructions."""
     print(f"\n{'='*60}")
     print("SUMMARY")
     print(f"{'='*60}")
@@ -366,6 +373,60 @@ def run_evaluation(args) -> None:
             f"  cd {eval_suite} && python evaluate.py"
             f" --mode sql --result_dir {result_dir.resolve()}"
         )
+
+
+def run_evaluation(args: argparse.Namespace) -> None:
+    """Run the full evaluation pipeline."""
+    api_key = _load_api_key()
+    credential = load_snowflake_credential(CREDENTIAL_PATH)
+    client = anthropic.Anthropic(api_key=api_key)
+    system_prompt = load_system_prompt()
+
+    instances = load_instances(JSONL_PATH)
+    print(f"Loaded {len(instances)} instances")
+    instances = _filter_instances(instances, args)
+
+    grouped = group_by_db_id(instances)
+    print(f"Spanning {len(grouped)} unique databases")
+
+    modes = args.modes
+    output_dir = Path(args.output_dir)
+    for mode in modes:
+        (output_dir / mode).mkdir(parents=True, exist_ok=True)
+
+    mode_stats: Dict[str, ModeStats] = {m: ModeStats() for m in modes}
+    skipped_dbs: List[str] = []
+    processed = 0
+    total = len(instances)
+
+    for db_id, db_instances in grouped.items():
+        print(f"\n{'='*60}")
+        print(f"Database: {db_id} ({len(db_instances)} instances)")
+        print(f"{'='*60}")
+
+        try:
+            engine, search_engine = _index_database(credential, db_id)
+        except Exception as e:
+            print(f"  SKIP: Failed to index {db_id}: {e}")
+            skipped_dbs.append(db_id)
+            for inst in db_instances:
+                _record_failure(inst.instance_id, modes, mode_stats, output_dir)
+            processed += len(db_instances)
+            continue
+
+        for inst in db_instances:
+            processed += 1
+            for mode in modes:
+                _run_instance_mode(
+                    inst, mode, search_engine, system_prompt, client,
+                    mode_stats, output_dir,
+                )
+            if processed % 10 == 0:
+                print(f"\n  Progress: {processed}/{total}")
+
+        engine.dispose()
+
+    _print_summary(total, skipped_dbs, mode_stats, modes, output_dir)
 
 
 def main() -> None:

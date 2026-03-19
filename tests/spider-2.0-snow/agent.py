@@ -4,7 +4,7 @@ import json
 import re
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import List, Optional
 
 import anthropic
 
@@ -16,8 +16,6 @@ from constants import (
     SEARCH_LIMIT,
     SQL_CODE_BLOCK_PATTERN,
     TEMPERATURE,
-    TOOLS_MCP,
-    TOOLS_VANILLA,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,7 +29,7 @@ class AgentResult:
     sql: str
     error: Optional[str]
     tool_calls_count: int
-    messages: list = field(default_factory=list)
+    messages: List[dict] = field(default_factory=list)
 
 
 def extract_sql(text: str) -> Optional[str]:
@@ -40,12 +38,15 @@ def extract_sql(text: str) -> Optional[str]:
     if match:
         return match.group(1).strip()
     stripped = text.strip()
-    if stripped.upper().startswith(("SELECT", "WITH", "INSERT", "UPDATE", "DELETE", "CREATE")):
+    sql_prefixes = ("SELECT", "WITH", "INSERT", "UPDATE", "DELETE", "CREATE")
+    if stripped.upper().startswith(sql_prefixes):
         return stripped
     return None
 
 
-def _build_user_message(instruction: str, external_knowledge: Optional[str], db_id: str) -> str:
+def _build_user_message(
+    instruction: str, external_knowledge: Optional[str], db_id: str
+) -> str:
     """Build the user message with question and context."""
     parts = [f"Database: {db_id}", f"Question: {instruction}"]
     if external_knowledge:
@@ -58,7 +59,9 @@ def _handle_schema_search(tool_input: dict, search_engine) -> str:
     query = tool_input["query"]
     schemas = tool_input.get("schemas")
     limit = tool_input.get("limit", SEARCH_LIMIT)
-    result = search_engine.search(query, schemas=schemas, limit=limit, hops=SEARCH_HOPS)
+    result = search_engine.search(
+        query, schemas=schemas, limit=limit, hops=SEARCH_HOPS
+    )
     return str(result)
 
 
@@ -84,23 +87,49 @@ def _extract_text_from_response(response) -> str:
     return "\n".join(text_parts)
 
 
-def _process_tool_calls(response, search_engine) -> list:
-    """Process tool_use blocks and return tool_result messages."""
-    tool_results = []
-    for block in response.content:
-        if block.type != "tool_use":
-            continue
-        handler = TOOL_HANDLERS.get(block.name)
-        if handler is None:
-            result_text = f"Unknown tool: {block.name}"
-        else:
+def _execute_tool_call(block, search_engine) -> dict:
+    """Execute a single tool call and return the tool_result message."""
+    handler = TOOL_HANDLERS.get(block.name)
+    if handler is None:
+        result_text = f"Error: Unknown tool '{block.name}'"
+    else:
+        try:
             result_text = handler(block.input, search_engine)
-        tool_results.append({
-            "type": "tool_result",
-            "tool_use_id": block.id,
-            "content": result_text,
-        })
-    return tool_results
+        except Exception as e:
+            logger.warning("Tool %s failed: %s", block.name, e)
+            result_text = f"Error executing {block.name}: {e}"
+
+    return {
+        "type": "tool_result",
+        "tool_use_id": block.id,
+        "content": result_text,
+    }
+
+
+def _process_tool_calls(response, search_engine) -> List[dict]:
+    """Process tool_use blocks and return tool_result messages."""
+    return [
+        _execute_tool_call(block, search_engine)
+        for block in response.content
+        if block.type == "tool_use"
+    ]
+
+
+def _build_result(
+    instance_id: str,
+    sql: str,
+    error: Optional[str],
+    tool_calls_count: int,
+    messages: List[dict],
+) -> AgentResult:
+    """Build an AgentResult."""
+    return AgentResult(
+        instance_id=instance_id,
+        sql=sql,
+        error=error,
+        tool_calls_count=tool_calls_count,
+        messages=messages,
+    )
 
 
 def run_agent(
@@ -111,12 +140,13 @@ def run_agent(
     system_prompt: str,
     client: anthropic.Anthropic,
     db_id: str,
-    tools: list,
+    tools: List[dict],
 ) -> AgentResult:
     """Run Claude with the given tool set (unified loop for both modes).
 
     Args:
-        tools: TOOLS_VANILLA (get_schema only) or TOOLS_MCP (get_schema + schema_search).
+        tools: Tool definitions list — vanilla (get_schema only)
+               or MCP (get_schema + schema_search).
     """
     user_message = _build_user_message(instruction, external_knowledge, db_id)
     messages = [{"role": "user", "content": user_message}]
@@ -136,12 +166,8 @@ def run_agent(
             text = _extract_text_from_response(response)
             sql = extract_sql(text)
             error = None if sql else "no_sql_extracted"
-            return AgentResult(
-                instance_id=instance_id,
-                sql=sql or "",
-                error=error,
-                tool_calls_count=tool_calls_count,
-                messages=messages,
+            return _build_result(
+                instance_id, sql or "", error, tool_calls_count, messages
             )
 
         if response.stop_reason == "tool_use":
@@ -151,18 +177,14 @@ def run_agent(
             tool_calls_count += len(tool_results)
             continue
 
-        return AgentResult(
-            instance_id=instance_id,
-            sql="",
-            error=f"unexpected_stop_reason:{response.stop_reason}",
-            tool_calls_count=tool_calls_count,
-            messages=messages,
+        return _build_result(
+            instance_id,
+            "",
+            f"unexpected_stop_reason:{response.stop_reason}",
+            tool_calls_count,
+            messages,
         )
 
-    return AgentResult(
-        instance_id=instance_id,
-        sql="",
-        error="max_turns_exceeded",
-        tool_calls_count=tool_calls_count,
-        messages=messages,
+    return _build_result(
+        instance_id, "", "max_turns_exceeded", tool_calls_count, messages
     )
