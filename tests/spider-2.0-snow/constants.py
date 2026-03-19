@@ -1,5 +1,23 @@
 """Constants for Spider 2.0-Snow evaluation."""
 
+from pathlib import Path
+
+# Paths
+_EVAL_DIR = Path(__file__).parent
+SPIDER2_SNOW_DIR = _EVAL_DIR / "Spider2" / "spider2-snow"
+JSONL_PATH = SPIDER2_SNOW_DIR / "spider2-snow.jsonl"
+DOCUMENTS_DIR = SPIDER2_SNOW_DIR / "resource" / "documents"
+CREDENTIAL_PATH = _EVAL_DIR / "snowflake_credential.json"
+PROMPT_PATH = _EVAL_DIR / "prompt.md"
+ENV_PATH = _EVAL_DIR.parent / ".env"
+DEFAULT_OUTPUT_DIR = _EVAL_DIR / "results"
+
+# Spider2 Snowflake shared account
+SNOWFLAKE_ACCOUNT = "RSRSBDK-YDB67606"
+DEFAULT_WAREHOUSE = "COMPUTE_WH_PARTICIPANT"
+DEFAULT_ROLE = "PARTICIPANT"
+
+# Model
 MODEL_NAME = "claude-opus-4-6"
 MAX_TOOL_TURNS = 10
 MAX_TOKENS = 4096

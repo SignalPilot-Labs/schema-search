@@ -3,7 +3,6 @@
 import json
 import re
 import logging
-from dataclasses import dataclass, field
 from typing import List, Optional
 
 import anthropic
@@ -17,19 +16,9 @@ from constants import (
     SQL_CODE_BLOCK_PATTERN,
     TEMPERATURE,
 )
+from models import AgentResult
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class AgentResult:
-    """Result from a single agent run."""
-
-    instance_id: str
-    sql: str
-    error: Optional[str]
-    tool_calls_count: int
-    messages: List[dict] = field(default_factory=list)
 
 
 def extract_sql(text: str) -> Optional[str]:
