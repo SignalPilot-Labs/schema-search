@@ -29,6 +29,8 @@ if _this_dir not in sys.path:
 
 from agent import run_agent
 from constants import MODEL_NAME, TOOLS_MCP, TOOLS_VANILLA
+from sqlalchemy import Engine
+
 from schema_search.schema_search import SchemaSearch
 from schema_search.utils.utils import create_engine_from_url
 
@@ -271,7 +273,7 @@ def _filter_instances(
 
 def _index_database(
     credential: dict, db_id: str
-) -> tuple["Engine", SchemaSearch]:
+) -> tuple[Engine, SchemaSearch]:
     """Connect to Snowflake and index a database's schema.
 
     Returns:
