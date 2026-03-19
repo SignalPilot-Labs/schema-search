@@ -79,3 +79,8 @@ TOOL_GET_SCHEMA = {
 # Vanilla: only get_schema. MCP: get_schema + schema_search.
 TOOLS_VANILLA = [TOOL_GET_SCHEMA]
 TOOLS_MCP = [TOOL_GET_SCHEMA, TOOL_SCHEMA_SEARCH]
+
+MODE_TOOLS = {
+    "vanilla": TOOLS_VANILLA,
+    "mcp": TOOLS_MCP,
+}

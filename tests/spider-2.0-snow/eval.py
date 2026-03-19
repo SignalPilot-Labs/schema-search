@@ -25,10 +25,9 @@ from constants import (
     DOCUMENTS_DIR,
     ENV_PATH,
     JSONL_PATH,
+    MODE_TOOLS,
     PROMPT_PATH,
     SNOWFLAKE_ACCOUNT,
-    TOOLS_MCP,
-    TOOLS_VANILLA,
 )
 from models import Instance, ModeStats
 from schema_search.schema_search import SchemaSearch
@@ -36,11 +35,6 @@ from schema_search.utils.utils import create_engine_from_url
 from stats import print_summary
 
 logger = logging.getLogger(__name__)
-
-MODE_TOOLS = {
-    "vanilla": TOOLS_VANILLA,
-    "mcp": TOOLS_MCP,
-}
 
 
 def load_instances(jsonl_path: Path) -> List[Instance]:
