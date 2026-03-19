@@ -16,6 +16,7 @@ import anthropic
 import numpy as np
 from dotenv import load_dotenv
 from scipy import stats as scipy_stats
+from tqdm import tqdm
 
 # Ensure project root is on path before local modules
 _project_root = str(Path(__file__).parent.parent.parent)
@@ -284,7 +285,7 @@ def _index_database(
     search_engine = SchemaSearch(engine)
     t0 = time.time()
     search_engine.index(force=False)
-    print(f"  Indexed in {time.time() - t0:.1f}s")
+    tqdm.write(f"  Indexed {db_id} in {time.time() - t0:.1f}s")
     return engine, search_engine
 
 
@@ -308,7 +309,7 @@ def _run_instance_mode(
     if _instance_already_done(inst.instance_id, mode, output_dir):
         mode_stats[mode].succeeded += 1
         mode_stats[mode].outcomes[inst.instance_id] = 1
-        print(f"  [{mode}] {inst.instance_id}: SKIP (already exists)")
+        tqdm.write(f"  [{mode}] {inst.instance_id}: SKIP (already exists)")
         return
 
     ext_knowledge = load_external_knowledge(inst.external_knowledge)
@@ -339,13 +340,13 @@ def _run_instance_mode(
             mode_stats[mode].outcomes[inst.instance_id] = 1
             status = f"OK (tools={result.tool_calls_count}, {latency:.1f}s)"
 
-        print(f"  [{mode}] {inst.instance_id}: {status}")
+        tqdm.write(f"  [{mode}] {inst.instance_id}: {status}")
 
     except Exception as e:
         save_sql("", inst.instance_id, output_dir / mode)
         mode_stats[mode].failed += 1
         mode_stats[mode].outcomes[inst.instance_id] = 0
-        print(f"  [{mode}] {inst.instance_id}: ERROR {e}")
+        tqdm.write(f"  [{mode}] {inst.instance_id}: ERROR {e}")
 
 
 def _print_summary(
@@ -396,36 +397,34 @@ def run_evaluation(args: argparse.Namespace) -> None:
 
     mode_stats: Dict[str, ModeStats] = {m: ModeStats() for m in modes}
     skipped_dbs: List[str] = []
-    processed = 0
     total = len(instances)
 
+    pbar = tqdm(total=total, desc="Instances", unit="inst")
+
     for db_id, db_instances in grouped.items():
-        print(f"\n{'='*60}")
-        print(f"Database: {db_id} ({len(db_instances)} instances)")
-        print(f"{'='*60}")
+        pbar.set_postfix(db=db_id)
 
         try:
             engine, search_engine = _index_database(credential, db_id)
         except Exception as e:
-            print(f"  SKIP: Failed to index {db_id}: {e}")
+            tqdm.write(f"SKIP: Failed to index {db_id}: {e}")
             skipped_dbs.append(db_id)
             for inst in db_instances:
                 _record_failure(inst.instance_id, modes, mode_stats, output_dir)
-            processed += len(db_instances)
+            pbar.update(len(db_instances))
             continue
 
         for inst in db_instances:
-            processed += 1
             for mode in modes:
                 _run_instance_mode(
                     inst, mode, search_engine, system_prompt, client,
                     mode_stats, output_dir,
                 )
-            if processed % 10 == 0:
-                print(f"\n  Progress: {processed}/{total}")
+            pbar.update(1)
 
         engine.dispose()
 
+    pbar.close()
     _print_summary(total, skipped_dbs, mode_stats, modes, output_dir)
 
 
