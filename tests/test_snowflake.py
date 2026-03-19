@@ -5,7 +5,7 @@ import pytest
 from dotenv import load_dotenv
 from sqlalchemy import Engine, text
 
-from schema_search import SchemaSearch
+from schema_search.schema_search import SchemaSearch
 from schema_search.utils.utils import create_engine_from_url
 
 
@@ -44,6 +44,7 @@ def test_snowflake_basic_query(snowflake_engine: Engine) -> None:
     except Exception as e:
         print(f"✗ Error: {e}")
         import traceback
+
         traceback.print_exc()
         raise
 
@@ -52,12 +53,14 @@ def test_snowflake_list_tables(snowflake_engine: Engine) -> None:
     """Test listing tables from Snowflake."""
     print("\nListing tables from Snowflake...")
 
-    query = text("""
+    query = text(
+        """
         SELECT table_catalog, table_schema, table_name
         FROM information_schema.tables
         WHERE table_schema NOT IN ('INFORMATION_SCHEMA')
         LIMIT 5
-    """)
+    """
+    )
 
     with snowflake_engine.connect() as conn:
         result = conn.execute(query)

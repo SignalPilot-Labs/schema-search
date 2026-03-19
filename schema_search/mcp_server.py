@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from fastmcp import FastMCP
 
-from schema_search import SchemaSearch
+from schema_search.schema_search import SchemaSearch
 from schema_search.utils.utils import create_engine_from_url
 
 logging.basicConfig(level=logging.INFO)

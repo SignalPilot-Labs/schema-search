@@ -5,7 +5,7 @@ import pytest
 from dotenv import load_dotenv
 from sqlalchemy import Engine, text
 
-from schema_search import SchemaSearch
+from schema_search.schema_search import SchemaSearch
 from schema_search.utils.utils import create_engine_from_url
 
 
@@ -44,6 +44,7 @@ def test_databricks_basic_query(databricks_engine):
     except Exception as e:
         print(f"✗ Error: {e}")
         import traceback
+
         traceback.print_exc()
         raise
 
@@ -52,13 +53,15 @@ def test_databricks_list_tables(databricks_engine):
     """Test listing tables from Databricks."""
     print("\nListing tables from Databricks...")
 
-    query = text("""
+    query = text(
+        """
         SELECT table_catalog, table_schema, table_name
         FROM system.information_schema.tables
         WHERE table_catalog NOT IN ('system', 'samples', 'hive_metastore')
         AND table_schema NOT IN ('information_schema', 'sys')
         LIMIT 5
-    """)
+    """
+    )
 
     with databricks_engine.connect() as conn:
         result = conn.execute(query)

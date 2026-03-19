@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine
 import psutil
 
-from schema_search import SchemaSearch
+from schema_search.schema_search import SchemaSearch
 from schema_search.types import SearchType
 
 
@@ -394,9 +394,13 @@ def test_search_with_schema_filter(search_engine):
 
     assert len(results.results) > 0, "Should have results"
     for result in results.results:
-        assert result["table"].startswith("public."), f"Result {result['table']} should be in public schema"
+        assert result["table"].startswith(
+            "public."
+        ), f"Result {result['table']} should be in public schema"
 
-    print(f"\n✓ search with schema filter returned {len(results.results)} results in public schema")
+    print(
+        f"\n✓ search with schema filter returned {len(results.results)} results in public schema"
+    )
 
 
 def test_search_with_nonexistent_schema_filter(search_engine):
@@ -417,7 +421,9 @@ def test_search_result_table_format(search_engine):
 
     assert len(results.results) > 0, "Should have results"
     for result in results.results:
-        assert "." in result["table"], f"Table name '{result['table']}' should be qualified (schema.table)"
+        assert (
+            "." in result["table"]
+        ), f"Table name '{result['table']}' should be qualified (schema.table)"
 
     print(f"\n✓ All {len(results.results)} results use qualified table names")
 
@@ -459,7 +465,9 @@ def test_get_schema_before_index_raises_error(database_url, llm_config):
         llm_base_url=llm_config["base_url"],
     )
 
-    with pytest.raises(ValueError, match="Must call index\\(\\) before get_schema\\(\\)"):
+    with pytest.raises(
+        ValueError, match="Must call index\\(\\) before get_schema\\(\\)"
+    ):
         search.get_schema()
 
     print("\n✓ get_schema() before index() correctly raises ValueError")

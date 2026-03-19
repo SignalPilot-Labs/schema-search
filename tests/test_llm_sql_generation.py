@@ -8,7 +8,7 @@ import pytest
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
 
-from schema_search import SchemaSearch
+from schema_search.schema_search import SchemaSearch
 
 
 @pytest.fixture(scope="module")
