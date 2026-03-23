@@ -21,11 +21,15 @@ DEFAULT_ROLE = "PARTICIPANT"
 
 # Model
 MODEL_NAME = "claude-opus-4-6"
-MAX_TOOL_TURNS = 10
+MAX_TOOL_TURNS = 20
 MAX_TOKENS = 8192
 TEMPERATURE = 0
 SEARCH_LIMIT = 10
 SEARCH_HOPS = 1
+
+# run_sql limits
+RUN_SQL_TIMEOUT = 30
+RUN_SQL_MAX_ROWS = 50
 
 DEFAULT_WORKERS = 4
 
@@ -80,9 +84,28 @@ TOOL_GET_SCHEMA: ToolParam = {
     },
 }
 
-# Vanilla: only get_schema. MCP: get_schema + schema_search.
-TOOLS_VANILLA = [TOOL_GET_SCHEMA]
-TOOLS_MCP = [TOOL_GET_SCHEMA, TOOL_SCHEMA_SEARCH]
+TOOL_RUN_SQL: ToolParam = {
+    "name": "run_sql",
+    "description": (
+        "Execute a SQL query against the Snowflake database and return results. "
+        "Use this to verify your query works before submitting the final answer. "
+        "Returns up to 50 rows. If the query errors, returns the error message."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "sql": {
+                "type": "string",
+                "description": "The SQL query to execute",
+            },
+        },
+        "required": ["sql"],
+    },
+}
+
+# Vanilla: get_schema + run_sql. MCP: get_schema + schema_search + run_sql.
+TOOLS_VANILLA = [TOOL_GET_SCHEMA, TOOL_RUN_SQL]
+TOOLS_MCP = [TOOL_GET_SCHEMA, TOOL_SCHEMA_SEARCH, TOOL_RUN_SQL]
 
 MODE_TOOLS = {
     "vanilla": TOOLS_VANILLA,

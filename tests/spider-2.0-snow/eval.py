@@ -4,6 +4,7 @@ import argparse
 import json
 import logging
 import os
+import shutil
 import sys
 import threading
 import time
@@ -189,7 +190,7 @@ def _record_failure(
 
 def _run_instance_mode(
     inst: Instance, mode: str, search_engine: SchemaSearch,
-    system_prompt: str, client: anthropic.Anthropic,
+    engine: Engine, system_prompt: str, client: anthropic.Anthropic,
     output_dir: Path,
 ) -> tuple[str, str, Optional[int], Optional[float]]:
     """Run a single instance in a single mode.
@@ -213,6 +214,7 @@ def _run_instance_mode(
             client=client,
             db_id=inst.db_id,
             tools=MODE_TOOLS[mode],
+            engine=engine,
         )
         latency = time.time() - t0
         save_sql(result.sql, inst.instance_id, output_dir / mode)
@@ -226,64 +228,20 @@ def _run_instance_mode(
         return (inst.instance_id, f"error:{e}", None, None)
 
 
-def _process_database(
-    db_id: str, db_instances: List[Instance], credential: dict,
-    modes: List[str], system_prompt: str, api_key: str,
-    output_dir: Path, pbar: tqdm, lock: threading.Lock,
-) -> tuple[Optional[str], Dict[str, ModeStats]]:
-    """Process all instances for a single database.
-
-    Returns:
-        Tuple of (skipped_db_id or None, per-mode stats).
-    """
-    local_stats: Dict[str, ModeStats] = {m: ModeStats() for m in modes}
-    client = anthropic.Anthropic(api_key=api_key)
-
-    try:
-        engine, search_engine = _index_database(credential, db_id)
-    except Exception as e:
-        tqdm.write(f"SKIP: Failed to index {db_id}: {e}")
-        for inst in db_instances:
-            for mode in modes:
-                save_sql("", inst.instance_id, output_dir / mode)
-                local_stats[mode].record_failure(inst.instance_id)
-        with lock:
-            pbar.update(len(db_instances))
-        return (db_id, local_stats)
-
-    for inst in db_instances:
-        for mode in modes:
-            iid, status, tc, lat = _run_instance_mode(
-                inst, mode, search_engine, system_prompt, client,
-                output_dir,
-            )
-            if status == "skip":
-                local_stats[mode].record_success(iid, tc or 0, lat or 0.0)
-                tqdm.write(f"  [{mode}] {iid}: SKIP (already exists)")
-            elif status == "ok":
-                local_stats[mode].record_success(iid, tc or 0, lat or 0.0)
-                tqdm.write(f"  [{mode}] {iid}: OK (tools={tc}, {lat:.1f}s)")
-            else:
-                local_stats[mode].record_failure(iid)
-                tqdm.write(f"  [{mode}] {iid}: {status.upper()}")
-        with lock:
-            pbar.update(1)
-
-    engine.dispose()
-    return (None, local_stats)
-
-
-def _merge_stats(
-    target: Dict[str, ModeStats], source: Dict[str, ModeStats]
-) -> None:
-    """Merge source ModeStats into target."""
-    for mode, src in source.items():
-        dst = target[mode]
-        dst.succeeded += src.succeeded
-        dst.failed += src.failed
-        dst.tool_calls.extend(src.tool_calls)
-        dst.latencies.extend(src.latencies)
-        dst.outcomes.update(src.outcomes)
+def _index_all_databases(
+    grouped: Dict[str, List[Instance]], credential: dict,
+) -> tuple[Dict[str, tuple[Engine, SchemaSearch]], List[str]]:
+    """Index all databases sequentially. Returns (db_resources, skipped_dbs)."""
+    db_resources: Dict[str, tuple[Engine, SchemaSearch]] = {}
+    skipped_dbs: List[str] = []
+    for db_id in grouped:
+        try:
+            engine, search_engine = _index_database(credential, db_id)
+            db_resources[db_id] = (engine, search_engine)
+        except Exception as e:
+            tqdm.write(f"SKIP: Failed to index {db_id}: {e}")
+            skipped_dbs.append(db_id)
+    return db_resources, skipped_dbs
 
 
 def run_evaluation(args: argparse.Namespace) -> None:
@@ -302,37 +260,79 @@ def run_evaluation(args: argparse.Namespace) -> None:
     modes = args.modes
     output_dir = Path(args.output_dir)
     workers = args.workers
+
+    if args.reset:
+        for mode in modes:
+            mode_dir = output_dir / mode
+            if mode_dir.exists():
+                shutil.rmtree(mode_dir)
+                print(f"Reset: removed {mode_dir}")
+
     for mode in modes:
         (output_dir / mode).mkdir(parents=True, exist_ok=True)
 
+    # Index all databases first (sequential, one-time cost)
+    print("Indexing databases...")
+    db_resources, skipped_dbs = _index_all_databases(grouped, credential)
+
     mode_stats: Dict[str, ModeStats] = {m: ModeStats() for m in modes}
-    skipped_dbs: List[str] = []
+
+    # Record failures for skipped databases
+    for db_id in skipped_dbs:
+        for inst in grouped[db_id]:
+            for mode in modes:
+                save_sql("", inst.instance_id, output_dir / mode)
+                mode_stats[mode].record_failure(inst.instance_id)
+
+    # Build work items: (instance, mode) pairs
+    work_items = []
+    for inst in instances:
+        if inst.db_id in db_resources:
+            for mode in modes:
+                work_items.append((inst, mode))
+
     total = len(instances)
+    print(f"Running {len(work_items)} tasks with {workers} worker(s)")
+    pbar = tqdm(total=len(work_items), desc="Tasks", unit="task")
     lock = threading.Lock()
 
-    print(f"Running with {workers} worker(s)")
-    pbar = tqdm(total=total, desc="Instances", unit="inst")
+    def _run_task(inst: Instance, mode: str) -> None:
+        """Run a single (instance, mode) task."""
+        engine, search_engine = db_resources[inst.db_id]
+        client = anthropic.Anthropic(api_key=api_key)
+        iid, status, tc, lat = _run_instance_mode(
+            inst, mode, search_engine, engine, system_prompt, client,
+            output_dir,
+        )
+        with lock:
+            if status == "skip":
+                mode_stats[mode].record_success(iid, tc or 0, lat or 0.0)
+                tqdm.write(f"  [{mode}] {iid}: SKIP (already exists)")
+            elif status == "ok":
+                mode_stats[mode].record_success(iid, tc or 0, lat or 0.0)
+                tqdm.write(f"  [{mode}] {iid}: OK (tools={tc}, {lat:.1f}s)")
+            else:
+                mode_stats[mode].record_failure(iid)
+                tqdm.write(f"  [{mode}] {iid}: {status.upper()}")
+            pbar.update(1)
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = {
-            executor.submit(
-                _process_database, db_id, db_insts, credential,
-                modes, system_prompt, api_key, output_dir, pbar, lock,
-            ): db_id
-            for db_id, db_insts in grouped.items()
-        }
+        futures = [
+            executor.submit(_run_task, inst, mode)
+            for inst, mode in work_items
+        ]
         for future in as_completed(futures):
-            db_id = futures[future]
             try:
-                skipped, local_stats = future.result()
-                if skipped:
-                    skipped_dbs.append(skipped)
-                _merge_stats(mode_stats, local_stats)
+                future.result()
             except Exception as e:
-                tqdm.write(f"FATAL: {db_id} worker crashed: {e}")
-                skipped_dbs.append(db_id)
+                tqdm.write(f"FATAL: worker crashed: {e}")
 
     pbar.close()
+
+    # Dispose engines
+    for engine, _ in db_resources.values():
+        engine.dispose()
+
     print_summary(total, skipped_dbs, mode_stats, modes, output_dir)
 
 
@@ -368,6 +368,11 @@ def main() -> None:
         type=int,
         default=DEFAULT_WORKERS,
         help=f"Number of parallel database workers (default: {DEFAULT_WORKERS})",
+    )
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="Remove existing results before running (default: resume)",
     )
     args = parser.parse_args()
     run_evaluation(args)
