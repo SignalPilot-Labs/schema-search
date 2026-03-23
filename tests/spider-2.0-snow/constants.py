@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+from anthropic.types import ToolParam
+
 # Paths
 _EVAL_DIR = Path(__file__).parent
 SPIDER2_SNOW_DIR = _EVAL_DIR / "Spider2" / "spider2-snow"
@@ -20,14 +22,16 @@ DEFAULT_ROLE = "PARTICIPANT"
 # Model
 MODEL_NAME = "claude-opus-4-6"
 MAX_TOOL_TURNS = 10
-MAX_TOKENS = 4096
+MAX_TOKENS = 8192
 TEMPERATURE = 0
 SEARCH_LIMIT = 10
 SEARCH_HOPS = 1
 
+DEFAULT_WORKERS = 4
+
 SQL_CODE_BLOCK_PATTERN = r"```sql\s*(.*?)\s*```"
 
-TOOL_SCHEMA_SEARCH = {
+TOOL_SCHEMA_SEARCH: ToolParam = {
     "name": "schema_search",
     "description": (
         "Search database schema using natural language. "
@@ -56,7 +60,7 @@ TOOL_SCHEMA_SEARCH = {
     },
 }
 
-TOOL_GET_SCHEMA = {
+TOOL_GET_SCHEMA: ToolParam = {
     "name": "get_schema",
     "description": (
         "Get the full database schema structure. "

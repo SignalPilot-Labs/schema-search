@@ -3,9 +3,11 @@
 import json
 import re
 import logging
-from typing import List, Optional
+from collections.abc import Sequence
+from typing import Optional
 
 import anthropic
+from anthropic.types import ToolParam
 
 from constants import (
     MAX_TOKENS,
@@ -95,7 +97,7 @@ def _execute_tool_call(block, search_engine) -> dict:
     }
 
 
-def _process_tool_calls(response, search_engine) -> List[dict]:
+def _process_tool_calls(response, search_engine) -> list[dict]:
     """Process tool_use blocks and return tool_result messages."""
     return [
         _execute_tool_call(block, search_engine)
@@ -109,7 +111,7 @@ def _build_result(
     sql: str,
     error: Optional[str],
     tool_calls_count: int,
-    messages: List[dict],
+    messages: list,
 ) -> AgentResult:
     """Build an AgentResult."""
     return AgentResult(
@@ -129,7 +131,7 @@ def run_agent(
     system_prompt: str,
     client: anthropic.Anthropic,
     db_id: str,
-    tools: List[dict],
+    tools: Sequence[ToolParam],
 ) -> AgentResult:
     """Run Claude with the given tool set (unified loop for both modes).
 
@@ -138,7 +140,7 @@ def run_agent(
                or MCP (get_schema + schema_search).
     """
     user_message = _build_user_message(instruction, external_knowledge, db_id)
-    messages = [{"role": "user", "content": user_message}]
+    messages: list = [{"role": "user", "content": user_message}]
     tool_calls_count = 0
 
     for _ in range(MAX_TOOL_TURNS):

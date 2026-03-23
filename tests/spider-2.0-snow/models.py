@@ -1,7 +1,7 @@
 """Data models for Spider 2.0-Snow evaluation."""
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Optional
 
 
 @dataclass
@@ -22,7 +22,7 @@ class AgentResult:
     sql: str
     error: Optional[str]
     tool_calls_count: int
-    messages: List[dict] = field(default_factory=list)
+    messages: list = field(default_factory=list)
 
 
 @dataclass
@@ -36,9 +36,9 @@ class ModeStats:
 
     succeeded: int = 0
     failed: int = 0
-    tool_calls: List[int] = field(default_factory=list)
-    latencies: List[float] = field(default_factory=list)
-    outcomes: Dict[str, int] = field(default_factory=dict)
+    tool_calls: list[int] = field(default_factory=list)
+    latencies: list[float] = field(default_factory=list)
+    outcomes: dict[str, int] = field(default_factory=dict)
 
     def record_success(
         self, instance_id: str, tool_calls_count: int, latency: float

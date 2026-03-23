@@ -5,15 +5,17 @@ import json
 import logging
 import os
 import sys
+import threading
 import time
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Optional
 from urllib.parse import quote_plus
 
 import anthropic
 from dotenv import load_dotenv
-from sqlalchemy import Engine
+from sqlalchemy import Engine, create_engine
 from tqdm import tqdm
 
 from agent import run_agent
@@ -22,6 +24,7 @@ from constants import (
     DEFAULT_OUTPUT_DIR,
     DEFAULT_ROLE,
     DEFAULT_WAREHOUSE,
+    DEFAULT_WORKERS,
     DOCUMENTS_DIR,
     ENV_PATH,
     JSONL_PATH,
@@ -31,7 +34,6 @@ from constants import (
 )
 from models import Instance, ModeStats
 from schema_search.schema_search import SchemaSearch
-from schema_search.utils.utils import create_engine_from_url
 from stats import print_summary
 
 logger = logging.getLogger(__name__)
@@ -76,17 +78,29 @@ def load_snowflake_credential(credential_path: Path) -> dict:
         return json.load(f)
 
 
-def build_snowflake_url(credential: dict, target_db: str) -> str:
-    """Build a Snowflake SQLAlchemy URL from credentials and target database."""
+def build_snowflake_engine(credential: dict, target_db: str) -> Engine:
+    """Build a Snowflake SQLAlchemy engine from credentials and target database."""
     user = credential["username"]
-    password = quote_plus(credential["password"])
     account = credential["account"]
     warehouse = credential.get("warehouse", DEFAULT_WAREHOUSE)
     role = credential.get("role", DEFAULT_ROLE)
-    return (
-        f"snowflake://{user}:{password}@{account}/{target_db}"
+    token = credential.get("token", "")
+
+    url = (
+        f"snowflake://{user}@{account}/{target_db}"
         f"?warehouse={warehouse}&role={role}"
     )
+    connect_args: dict = {}
+    if token:
+        connect_args["authenticator"] = "programmatic_access_token"
+        connect_args["token"] = token
+    else:
+        password = quote_plus(credential["password"])
+        url = (
+            f"snowflake://{user}:{password}@{account}/{target_db}"
+            f"?warehouse={warehouse}&role={role}"
+        )
+    return create_engine(url, connect_args=connect_args)
 
 
 def load_external_knowledge(filename: Optional[str]) -> Optional[str]:
@@ -123,12 +137,10 @@ def _instance_already_done(instance_id: str, mode: str, output_dir: Path) -> boo
 def _load_api_key() -> str:
     """Load and validate the Anthropic API key from .env."""
     load_dotenv(ENV_PATH)
-    api_key = os.getenv("LLM_API_KEY")
+    api_key = os.getenv("LLM_API_KEY", "")
     if not api_key:
         print("ERROR: LLM_API_KEY not set in tests/.env")
         sys.exit(1)
-    if "=" in api_key:
-        api_key = api_key.split("=", 1)[1]
     return api_key
 
 
@@ -157,8 +169,7 @@ def _index_database(
     Raises:
         Exception: If connection or indexing fails.
     """
-    snowflake_url = build_snowflake_url(credential, db_id)
-    engine = create_engine_from_url(snowflake_url)
+    engine = build_snowflake_engine(credential, db_id)
     search_engine = SchemaSearch(engine)
     t0 = time.time()
     search_engine.index(force=False)
@@ -178,14 +189,17 @@ def _record_failure(
 
 def _run_instance_mode(
     inst: Instance, mode: str, search_engine: SchemaSearch,
-    system_prompt: str, client: anthropic.Anthropic, mode_stats: Dict[str, ModeStats],
+    system_prompt: str, client: anthropic.Anthropic,
     output_dir: Path,
-) -> None:
-    """Run a single instance in a single mode and record results."""
+) -> tuple[str, str, Optional[int], Optional[float]]:
+    """Run a single instance in a single mode.
+
+    Returns:
+        Tuple of (instance_id, status, tool_calls_count, latency).
+        tool_calls_count and latency are None on failure/skip.
+    """
     if _instance_already_done(inst.instance_id, mode, output_dir):
-        mode_stats[mode].record_success(inst.instance_id, 0, 0.0)
-        tqdm.write(f"  [{mode}] {inst.instance_id}: SKIP (already exists)")
-        return
+        return (inst.instance_id, "skip", 0, 0.0)
 
     ext_knowledge = load_external_knowledge(inst.external_knowledge)
     try:
@@ -204,27 +218,78 @@ def _run_instance_mode(
         save_sql(result.sql, inst.instance_id, output_dir / mode)
 
         if result.error:
-            mode_stats[mode].record_failure(inst.instance_id)
-            status = f"FAIL ({result.error})"
-        else:
-            mode_stats[mode].record_success(
-                inst.instance_id, result.tool_calls_count, latency
-            )
-            status = f"OK (tools={result.tool_calls_count}, {latency:.1f}s)"
-
-        tqdm.write(f"  [{mode}] {inst.instance_id}: {status}")
+            return (inst.instance_id, f"fail:{result.error}", None, None)
+        return (inst.instance_id, "ok", result.tool_calls_count, latency)
 
     except Exception as e:
         save_sql("", inst.instance_id, output_dir / mode)
-        mode_stats[mode].record_failure(inst.instance_id)
-        tqdm.write(f"  [{mode}] {inst.instance_id}: ERROR {e}")
+        return (inst.instance_id, f"error:{e}", None, None)
+
+
+def _process_database(
+    db_id: str, db_instances: List[Instance], credential: dict,
+    modes: List[str], system_prompt: str, api_key: str,
+    output_dir: Path, pbar: tqdm, lock: threading.Lock,
+) -> tuple[Optional[str], Dict[str, ModeStats]]:
+    """Process all instances for a single database.
+
+    Returns:
+        Tuple of (skipped_db_id or None, per-mode stats).
+    """
+    local_stats: Dict[str, ModeStats] = {m: ModeStats() for m in modes}
+    client = anthropic.Anthropic(api_key=api_key)
+
+    try:
+        engine, search_engine = _index_database(credential, db_id)
+    except Exception as e:
+        tqdm.write(f"SKIP: Failed to index {db_id}: {e}")
+        for inst in db_instances:
+            for mode in modes:
+                save_sql("", inst.instance_id, output_dir / mode)
+                local_stats[mode].record_failure(inst.instance_id)
+        with lock:
+            pbar.update(len(db_instances))
+        return (db_id, local_stats)
+
+    for inst in db_instances:
+        for mode in modes:
+            iid, status, tc, lat = _run_instance_mode(
+                inst, mode, search_engine, system_prompt, client,
+                output_dir,
+            )
+            if status == "skip":
+                local_stats[mode].record_success(iid, tc or 0, lat or 0.0)
+                tqdm.write(f"  [{mode}] {iid}: SKIP (already exists)")
+            elif status == "ok":
+                local_stats[mode].record_success(iid, tc or 0, lat or 0.0)
+                tqdm.write(f"  [{mode}] {iid}: OK (tools={tc}, {lat:.1f}s)")
+            else:
+                local_stats[mode].record_failure(iid)
+                tqdm.write(f"  [{mode}] {iid}: {status.upper()}")
+        with lock:
+            pbar.update(1)
+
+    engine.dispose()
+    return (None, local_stats)
+
+
+def _merge_stats(
+    target: Dict[str, ModeStats], source: Dict[str, ModeStats]
+) -> None:
+    """Merge source ModeStats into target."""
+    for mode, src in source.items():
+        dst = target[mode]
+        dst.succeeded += src.succeeded
+        dst.failed += src.failed
+        dst.tool_calls.extend(src.tool_calls)
+        dst.latencies.extend(src.latencies)
+        dst.outcomes.update(src.outcomes)
 
 
 def run_evaluation(args: argparse.Namespace) -> None:
     """Run the full evaluation pipeline."""
     api_key = _load_api_key()
     credential = load_snowflake_credential(CREDENTIAL_PATH)
-    client = anthropic.Anthropic(api_key=api_key)
     system_prompt = load_system_prompt()
 
     instances = load_instances(JSONL_PATH)
@@ -236,37 +301,36 @@ def run_evaluation(args: argparse.Namespace) -> None:
 
     modes = args.modes
     output_dir = Path(args.output_dir)
+    workers = args.workers
     for mode in modes:
         (output_dir / mode).mkdir(parents=True, exist_ok=True)
 
     mode_stats: Dict[str, ModeStats] = {m: ModeStats() for m in modes}
     skipped_dbs: List[str] = []
     total = len(instances)
+    lock = threading.Lock()
 
+    print(f"Running with {workers} worker(s)")
     pbar = tqdm(total=total, desc="Instances", unit="inst")
 
-    for db_id, db_instances in grouped.items():
-        pbar.set_postfix(db=db_id)
-
-        try:
-            engine, search_engine = _index_database(credential, db_id)
-        except Exception as e:
-            tqdm.write(f"SKIP: Failed to index {db_id}: {e}")
-            skipped_dbs.append(db_id)
-            for inst in db_instances:
-                _record_failure(inst.instance_id, modes, mode_stats, output_dir)
-            pbar.update(len(db_instances))
-            continue
-
-        for inst in db_instances:
-            for mode in modes:
-                _run_instance_mode(
-                    inst, mode, search_engine, system_prompt, client,
-                    mode_stats, output_dir,
-                )
-            pbar.update(1)
-
-        engine.dispose()
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {
+            executor.submit(
+                _process_database, db_id, db_insts, credential,
+                modes, system_prompt, api_key, output_dir, pbar, lock,
+            ): db_id
+            for db_id, db_insts in grouped.items()
+        }
+        for future in as_completed(futures):
+            db_id = futures[future]
+            try:
+                skipped, local_stats = future.result()
+                if skipped:
+                    skipped_dbs.append(skipped)
+                _merge_stats(mode_stats, local_stats)
+            except Exception as e:
+                tqdm.write(f"FATAL: {db_id} worker crashed: {e}")
+                skipped_dbs.append(db_id)
 
     pbar.close()
     print_summary(total, skipped_dbs, mode_stats, modes, output_dir)
@@ -298,6 +362,12 @@ def main() -> None:
         choices=["vanilla", "mcp"],
         default=["vanilla", "mcp"],
         help="Evaluation modes to run (default: both)",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=DEFAULT_WORKERS,
+        help=f"Number of parallel database workers (default: {DEFAULT_WORKERS})",
     )
     args = parser.parse_args()
     run_evaluation(args)
