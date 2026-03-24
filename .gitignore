@@ -215,3 +215,8 @@ __marimo__/
 *.env
 
 CLAUDE.md
+
+# Spider 2.0-Snow evaluation
+tests/spider-2.0-snow/results/
+tests/spider-2.0-snow/Spider2/
+tests/spider-2.0-snow/snowflake_credential.json
