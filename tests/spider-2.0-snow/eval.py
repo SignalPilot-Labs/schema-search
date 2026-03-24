@@ -1,15 +1,14 @@
 """Spider 2.0-Snow evaluation: Claude vanilla vs Claude + schema-search MCP."""
 
 import argparse
+import asyncio
 import json
 import logging
 import os
 import shutil
 import sys
-import threading
 import time
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Optional
 from urllib.parse import quote_plus
@@ -19,7 +18,7 @@ from dotenv import load_dotenv
 from sqlalchemy import Engine, create_engine
 from tqdm import tqdm
 
-from agent import run_agent
+from agent import CreditExhaustedError, run_agent
 from constants import (
     CREDENTIAL_PATH,
     DEFAULT_OUTPUT_DIR,
@@ -188,9 +187,9 @@ def _record_failure(
         mode_stats[mode].record_failure(instance_id)
 
 
-def _run_instance_mode(
+async def _run_instance_mode(
     inst: Instance, mode: str, search_engine: SchemaSearch,
-    engine: Engine, system_prompt: str, client: anthropic.Anthropic,
+    engine: Engine, system_prompt: str, client: anthropic.AsyncAnthropic,
     output_dir: Path,
 ) -> tuple[str, str, Optional[int], Optional[float]]:
     """Run a single instance in a single mode.
@@ -205,7 +204,7 @@ def _run_instance_mode(
     ext_knowledge = load_external_knowledge(inst.external_knowledge)
     try:
         t0 = time.time()
-        result = run_agent(
+        result = await run_agent(
             instance_id=inst.instance_id,
             instruction=inst.instruction,
             external_knowledge=ext_knowledge,
@@ -223,29 +222,19 @@ def _run_instance_mode(
             return (inst.instance_id, f"fail:{result.error}", None, None)
         return (inst.instance_id, "ok", result.tool_calls_count, latency)
 
+    except CreditExhaustedError:
+        raise
     except Exception as e:
         save_sql("", inst.instance_id, output_dir / mode)
         return (inst.instance_id, f"error:{e}", None, None)
 
 
-def _index_all_databases(
-    grouped: Dict[str, List[Instance]], credential: dict,
-) -> tuple[Dict[str, tuple[Engine, SchemaSearch]], List[str]]:
-    """Index all databases sequentially. Returns (db_resources, skipped_dbs)."""
-    db_resources: Dict[str, tuple[Engine, SchemaSearch]] = {}
-    skipped_dbs: List[str] = []
-    for db_id in grouped:
-        try:
-            engine, search_engine = _index_database(credential, db_id)
-            db_resources[db_id] = (engine, search_engine)
-        except Exception as e:
-            tqdm.write(f"SKIP: Failed to index {db_id}: {e}")
-            skipped_dbs.append(db_id)
-    return db_resources, skipped_dbs
+async def run_evaluation(args: argparse.Namespace) -> None:
+    """Run the full evaluation pipeline with asyncio.
 
-
-def run_evaluation(args: argparse.Namespace) -> None:
-    """Run the full evaluation pipeline."""
+    Indexes databases concurrently and starts instance tasks as soon as
+    each database is ready. All API calls are non-blocking (async client).
+    """
     api_key = _load_api_key()
     credential = load_snowflake_credential(CREDENTIAL_PATH)
     system_prompt = load_system_prompt()
@@ -271,69 +260,93 @@ def run_evaluation(args: argparse.Namespace) -> None:
     for mode in modes:
         (output_dir / mode).mkdir(parents=True, exist_ok=True)
 
-    # Index all databases first (sequential, one-time cost)
-    print("Indexing databases...")
-    db_resources, skipped_dbs = _index_all_databases(grouped, credential)
+    total_tasks = sum(len(insts) * len(modes) for insts in grouped.values())
+    total_instances = len(instances)
+    print(f"Running {total_tasks} tasks with {workers} concurrent worker(s)")
 
     mode_stats: Dict[str, ModeStats] = {m: ModeStats() for m in modes}
+    db_resources: Dict[str, tuple[Engine, SchemaSearch]] = {}
+    skipped_dbs: List[str] = []
+    pbar = tqdm(total=total_tasks, desc="Tasks", unit="task")
+    semaphore = asyncio.Semaphore(workers)
+    client = anthropic.AsyncAnthropic(api_key=api_key)
 
-    # Record failures for skipped databases
-    for db_id in skipped_dbs:
+    async def _run_task(inst: Instance, mode: str) -> None:
+        """Run a single (instance, mode) task with semaphore-based concurrency."""
+        async with semaphore:
+            iid, status, tc, lat = await _run_instance_mode(
+                inst, mode, db_resources[inst.db_id][1],
+                db_resources[inst.db_id][0], system_prompt, client,
+                output_dir,
+            )
+
+        if status == "skip":
+            mode_stats[mode].record_success(iid, tc or 0, lat or 0.0)
+            tqdm.write(f"  [{mode}] {iid}: SKIP (already exists)")
+        elif status == "ok":
+            mode_stats[mode].record_success(iid, tc or 0, lat or 0.0)
+            tqdm.write(f"  [{mode}] {iid}: OK (tools={tc}, {lat:.1f}s)")
+        else:
+            mode_stats[mode].record_failure(iid)
+            tqdm.write(f"  [{mode}] {iid}: {status.upper()}")
+        pbar.update(1)
+
+    async def _index_and_run(db_id: str) -> List[asyncio.Task]:
+        """Index one database (in thread) and launch its instance tasks."""
+        try:
+            engine, search_engine = await asyncio.to_thread(
+                _index_database, credential, db_id
+            )
+            db_resources[db_id] = (engine, search_engine)
+        except Exception as e:
+            tqdm.write(f"SKIP: Failed to index {db_id}: {e}")
+            skipped_dbs.append(db_id)
+            for inst in grouped[db_id]:
+                for mode in modes:
+                    save_sql("", inst.instance_id, output_dir / mode)
+                    mode_stats[mode].record_failure(inst.instance_id)
+                    pbar.update(1)
+            return []
+
+        # Launch instance tasks immediately
+        tasks = []
         for inst in grouped[db_id]:
             for mode in modes:
-                save_sql("", inst.instance_id, output_dir / mode)
-                mode_stats[mode].record_failure(inst.instance_id)
+                tasks.append(asyncio.create_task(_run_task(inst, mode)))
+        return tasks
 
-    # Build work items: (instance, mode) pairs
-    work_items = []
-    for inst in instances:
-        if inst.db_id in db_resources:
-            for mode in modes:
-                work_items.append((inst, mode))
+    # Index all databases concurrently, each spawns instance tasks on completion
+    index_tasks = [_index_and_run(db_id) for db_id in grouped]
+    instance_task_lists = await asyncio.gather(*index_tasks, return_exceptions=True)
 
-    total = len(instances)
-    print(f"Running {len(work_items)} tasks with {workers} worker(s)")
-    pbar = tqdm(total=len(work_items), desc="Tasks", unit="task")
-    lock = threading.Lock()
+    # Collect all instance tasks and wait for completion
+    all_instance_tasks = []
+    for result in instance_task_lists:
+        if isinstance(result, Exception):
+            tqdm.write(f"FATAL: indexing crashed: {result}")
+        else:
+            all_instance_tasks.extend(result)
 
-    def _run_task(inst: Instance, mode: str) -> None:
-        """Run a single (instance, mode) task."""
-        engine, search_engine = db_resources[inst.db_id]
-        client = anthropic.Anthropic(api_key=api_key)
-        iid, status, tc, lat = _run_instance_mode(
-            inst, mode, search_engine, engine, system_prompt, client,
-            output_dir,
-        )
-        with lock:
-            if status == "skip":
-                mode_stats[mode].record_success(iid, tc or 0, lat or 0.0)
-                tqdm.write(f"  [{mode}] {iid}: SKIP (already exists)")
-            elif status == "ok":
-                mode_stats[mode].record_success(iid, tc or 0, lat or 0.0)
-                tqdm.write(f"  [{mode}] {iid}: OK (tools={tc}, {lat:.1f}s)")
-            else:
-                mode_stats[mode].record_failure(iid)
-                tqdm.write(f"  [{mode}] {iid}: {status.upper()}")
-            pbar.update(1)
-
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = [
-            executor.submit(_run_task, inst, mode)
-            for inst, mode in work_items
-        ]
-        for future in as_completed(futures):
-            try:
-                future.result()
-            except Exception as e:
-                tqdm.write(f"FATAL: worker crashed: {e}")
+    # Wait for all instance tasks
+    if all_instance_tasks:
+        results = await asyncio.gather(*all_instance_tasks, return_exceptions=True)
+        for r in results:
+            if isinstance(r, CreditExhaustedError):
+                tqdm.write("STOP: API credits exhausted — cancelling remaining tasks")
+                for task in all_instance_tasks:
+                    task.cancel()
+                break
+            elif isinstance(r, Exception):
+                tqdm.write(f"FATAL: worker crashed: {r}")
 
     pbar.close()
+    await client.close()
 
     # Dispose engines
     for engine, _ in db_resources.values():
         engine.dispose()
 
-    print_summary(total, skipped_dbs, mode_stats, modes, output_dir)
+    print_summary(total_instances, skipped_dbs, mode_stats, modes, output_dir)
 
 
 def main() -> None:
@@ -367,7 +380,7 @@ def main() -> None:
         "--workers",
         type=int,
         default=DEFAULT_WORKERS,
-        help=f"Number of parallel database workers (default: {DEFAULT_WORKERS})",
+        help=f"Number of concurrent workers (default: {DEFAULT_WORKERS})",
     )
     parser.add_argument(
         "--reset",
@@ -375,7 +388,7 @@ def main() -> None:
         help="Remove existing results before running (default: resume)",
     )
     args = parser.parse_args()
-    run_evaluation(args)
+    asyncio.run(run_evaluation(args))
 
 
 if __name__ == "__main__":

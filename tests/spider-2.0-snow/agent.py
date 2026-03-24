@@ -1,5 +1,6 @@
 """Claude agentic loop for Text2SQL with optional schema-search MCP tools."""
 
+import asyncio
 import json
 import re
 import logging
@@ -9,9 +10,11 @@ from typing import Optional
 import anthropic
 from anthropic.types import ToolParam
 
-from sqlalchemy import Engine, text
+from sqlalchemy import Engine
 
 from constants import (
+    API_MAX_RETRIES,
+    API_RETRY_BASE_DELAY,
     MAX_TOKENS,
     MAX_TOOL_TURNS,
     MODEL_NAME,
@@ -25,6 +28,31 @@ from constants import (
 from models import AgentResult
 
 logger = logging.getLogger(__name__)
+
+
+class CreditExhaustedError(Exception):
+    """Raised when API credits are exhausted — no point retrying."""
+
+
+async def _api_call_with_retry(client, **kwargs):
+    """Call client.messages.create with exponential backoff on rate limits.
+
+    Raises CreditExhaustedError immediately on billing errors.
+    """
+    for attempt in range(API_MAX_RETRIES):
+        try:
+            return await client.messages.create(**kwargs)
+        except anthropic.RateLimitError:
+            delay = API_RETRY_BASE_DELAY * (2 ** attempt)
+            logger.warning("Rate limited, retrying in %.1fs (attempt %d/%d)",
+                           delay, attempt + 1, API_MAX_RETRIES)
+            await asyncio.sleep(delay)
+        except anthropic.BadRequestError as e:
+            if "credit balance" in str(e).lower():
+                raise CreditExhaustedError(str(e)) from e
+            raise
+    # Final attempt — let it raise
+    return await client.messages.create(**kwargs)
 
 
 def extract_sql(text: str) -> Optional[str]:
@@ -164,18 +192,18 @@ def _build_result(
     )
 
 
-def run_agent(
+async def run_agent(
     instance_id: str,
     instruction: str,
     external_knowledge: Optional[str],
     search_engine,
     system_prompt: str,
-    client: anthropic.Anthropic,
+    client: anthropic.AsyncAnthropic,
     db_id: str,
     tools: Sequence[ToolParam],
     engine: Engine,
 ) -> AgentResult:
-    """Run Claude with the given tool set (unified loop for both modes).
+    """Run Claude with the given tool set (unified async loop for both modes).
 
     Args:
         tools: Tool definitions list — vanilla (get_schema + run_sql)
@@ -187,7 +215,8 @@ def run_agent(
     tool_calls_count = 0
 
     for _ in range(MAX_TOOL_TURNS):
-        response = client.messages.create(
+        response = await _api_call_with_retry(
+            client,
             model=MODEL_NAME,
             max_tokens=MAX_TOKENS,
             system=system_prompt,
@@ -206,7 +235,10 @@ def run_agent(
 
         if response.stop_reason == "tool_use":
             messages.append({"role": "assistant", "content": response.content})
-            tool_results = _process_tool_calls(response, search_engine, engine)
+            # Tool execution is blocking (DB/search), run in thread
+            tool_results = await asyncio.to_thread(
+                _process_tool_calls, response, search_engine, engine
+            )
             messages.append({"role": "user", "content": tool_results})
             tool_calls_count += len(tool_results)
             continue
