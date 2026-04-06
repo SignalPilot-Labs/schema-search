@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, TYPE_CHECKING
 
 import numpy as np
 
+from schema_search.constants import EMBEDDINGS_CACHE_FILENAME, EMBEDDING_CONFIG_CACHE_FILENAME
 from schema_search.types import Chunk
 from schema_search.embedding_cache.base import BaseEmbeddingCache
 from schema_search.metrics import get_metric
@@ -31,8 +32,8 @@ class InMemoryEmbeddingCache(BaseEmbeddingCache):
     def load_or_generate(
         self, chunks: List[Chunk], force: bool, chunking_config: Dict
     ) -> None:
-        cache_file = self.cache_dir / "embeddings.npz"
-        config_file = self.cache_dir / "cache_config.json"
+        cache_file = self.cache_dir / EMBEDDINGS_CACHE_FILENAME
+        config_file = self.cache_dir / EMBEDDING_CONFIG_CACHE_FILENAME
 
         if not force and self._is_cache_valid(cache_file, config_file, chunking_config):
             self._load_from_cache(cache_file)

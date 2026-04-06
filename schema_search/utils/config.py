@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 
 import yaml
 
+from schema_search.constants import DEFAULT_CONFIG_FILENAME
 from schema_search.utils.utils import lazy_import_check
 
 
@@ -18,7 +19,7 @@ def load_config(config_path: Optional[str]) -> Dict[str, Any]:
         Configuration dictionary.
     """
     if config_path is None:
-        config_path = str(Path(__file__).parent.parent.parent / "config.yml")
+        config_path = str(Path(__file__).parent.parent.parent / DEFAULT_CONFIG_FILENAME)
 
     with open(config_path) as f:
         return yaml.safe_load(f)

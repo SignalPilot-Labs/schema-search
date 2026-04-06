@@ -4,15 +4,15 @@ import logging
 from typing import Dict, List, Tuple
 
 from sqlalchemy import text
+from sqlalchemy.engine import Connection
 
+from schema_search.constants import SKIP_CATALOGS
 from schema_search.extractors.base import BaseExtractor
 from schema_search.types import DBSchema, ColumnInfo, ForeignKeyInfo
 
 logger = logging.getLogger(__name__)
 
 TableKey = Tuple[str, str, str]  # (catalog, schema, table)
-
-SKIP_CATALOGS = {"system"}  # system catalog is not a user schema
 
 
 class DatabricksExtractor(BaseExtractor):
@@ -154,56 +154,60 @@ class DatabricksExtractor(BaseExtractor):
         self, catalogs: List[str]
     ) -> Dict[TableKey, List[ForeignKeyInfo]]:
         fks_by_table: Dict[TableKey, Dict[str, ForeignKeyInfo]] = {}
-
         with self.engine.connect() as conn:
             for catalog in catalogs:
-                query = text(
-                    f"""
-                    SELECT
-                        tc.table_schema,
-                        tc.table_name,
-                        kcu.column_name,
-                        ccu.table_schema AS foreign_table_schema,
-                        ccu.table_name AS foreign_table_name,
-                        ccu.column_name AS foreign_column_name
-                    FROM {catalog}.information_schema.table_constraints tc
-                    JOIN {catalog}.information_schema.key_column_usage kcu
-                        ON tc.constraint_name = kcu.constraint_name
-                        AND tc.table_schema = kcu.table_schema
-                    JOIN {catalog}.information_schema.referential_constraints rc
-                        ON tc.constraint_name = rc.constraint_name
-                        AND tc.table_schema = rc.constraint_schema
-                    JOIN {catalog}.information_schema.constraint_column_usage ccu
-                        ON rc.unique_constraint_name = ccu.constraint_name
-                        AND rc.unique_constraint_schema = ccu.constraint_schema
-                    WHERE tc.constraint_type = 'FOREIGN KEY'
-                """
-                )
-                result = conn.execute(query)
-                for row in result:
-                    if self._should_skip_schema(row[0]):
-                        continue
-
-                    table_key: TableKey = (catalog, row[0], row[1])
-                    ref_schema = f"{catalog}.{row[3]}"
-                    ref_table = row[4]
-                    ref_key = f"{ref_schema}.{ref_table}"
-
-                    if table_key not in fks_by_table:
-                        fks_by_table[table_key] = {}
-
-                    fks_by_table[table_key].setdefault(
-                        ref_key,
-                        {
-                            "constrained_columns": [],
-                            "referred_schema": ref_schema,
-                            "referred_table": ref_table,
-                            "referred_columns": [],
-                        },
-                    )
-                    fks_by_table[table_key][ref_key]["constrained_columns"].append(
-                        row[2]
-                    )
-                    fks_by_table[table_key][ref_key]["referred_columns"].append(row[5])
-
+                self._collect_catalog_foreign_keys(conn, catalog, fks_by_table)
         return {k: list(v.values()) for k, v in fks_by_table.items()}
+
+    def _collect_catalog_foreign_keys(
+        self,
+        conn: Connection,
+        catalog: str,
+        fks_by_table: Dict[TableKey, Dict[str, ForeignKeyInfo]],
+    ) -> None:
+        query = text(
+            f"""
+            SELECT
+                tc.table_schema,
+                tc.table_name,
+                kcu.column_name,
+                ccu.table_schema AS foreign_table_schema,
+                ccu.table_name AS foreign_table_name,
+                ccu.column_name AS foreign_column_name
+            FROM {catalog}.information_schema.table_constraints tc
+            JOIN {catalog}.information_schema.key_column_usage kcu
+                ON tc.constraint_name = kcu.constraint_name
+                AND tc.table_schema = kcu.table_schema
+            JOIN {catalog}.information_schema.referential_constraints rc
+                ON tc.constraint_name = rc.constraint_name
+                AND tc.table_schema = rc.constraint_schema
+            JOIN {catalog}.information_schema.constraint_column_usage ccu
+                ON rc.unique_constraint_name = ccu.constraint_name
+                AND rc.unique_constraint_schema = ccu.constraint_schema
+            WHERE tc.constraint_type = 'FOREIGN KEY'
+        """
+        )
+        result = conn.execute(query)
+        for row in result:
+            if self._should_skip_schema(row[0]):
+                continue
+
+            table_key: TableKey = (catalog, row[0], row[1])
+            ref_schema = f"{catalog}.{row[3]}"
+            ref_table = row[4]
+            ref_key = f"{ref_schema}.{ref_table}"
+
+            if table_key not in fks_by_table:
+                fks_by_table[table_key] = {}
+
+            fks_by_table[table_key].setdefault(
+                ref_key,
+                {
+                    "constrained_columns": [],
+                    "referred_schema": ref_schema,
+                    "referred_table": ref_table,
+                    "referred_columns": [],
+                },
+            )
+            fks_by_table[table_key][ref_key]["constrained_columns"].append(row[2])
+            fks_by_table[table_key][ref_key]["referred_columns"].append(row[5])

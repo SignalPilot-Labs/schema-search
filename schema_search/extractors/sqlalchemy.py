@@ -1,7 +1,8 @@
 """SQLAlchemy-based schema extractor for PostgreSQL, MySQL, Snowflake, BigQuery."""
 
-from typing import Dict, List, Any
+from typing import List, Any
 from sqlalchemy import inspect
+from sqlalchemy.engine.reflection import Inspector
 
 from schema_search.extractors.base import BaseExtractor
 from schema_search.types import (
@@ -35,7 +36,7 @@ class SQLAlchemyExtractor(BaseExtractor):
         return result
 
     def _extract_table(
-        self, inspector, table_name: str, schema_name: str
+        self, inspector: Inspector, table_name: str, schema_name: str
     ) -> TableSchema:
         pk_constraint = inspector.get_pk_constraint(table_name, schema=schema_name)
 
@@ -81,7 +82,7 @@ class SQLAlchemyExtractor(BaseExtractor):
             ),
         }
 
-    def _extract_columns(self, columns: List[Dict[str, Any]]) -> List[ColumnInfo]:
+    def _extract_columns(self, columns: List[Any]) -> List[ColumnInfo]:
         return [
             {
                 "name": col["name"],
@@ -93,7 +94,7 @@ class SQLAlchemyExtractor(BaseExtractor):
         ]
 
     def _extract_foreign_keys(
-        self, foreign_keys: List[Dict[str, Any]], default_schema: str
+        self, foreign_keys: List[Any], default_schema: str
     ) -> List[ForeignKeyInfo]:
         return [
             {
@@ -105,7 +106,7 @@ class SQLAlchemyExtractor(BaseExtractor):
             for fk in foreign_keys
         ]
 
-    def _extract_indices(self, indices: List[Dict[str, Any]]) -> List[IndexInfo]:
+    def _extract_indices(self, indices: List[Any]) -> List[IndexInfo]:
         return [
             {
                 "name": idx["name"] or f"idx_{i}",
@@ -116,7 +117,7 @@ class SQLAlchemyExtractor(BaseExtractor):
         ]
 
     def _extract_constraints(
-        self, constraints: List[Dict[str, Any]]
+        self, constraints: List[Any]
     ) -> List[ConstraintInfo]:
         return [
             {
@@ -127,7 +128,7 @@ class SQLAlchemyExtractor(BaseExtractor):
         ]
 
     def _extract_check_constraints(
-        self, constraints: List[Dict[str, Any]]
+        self, constraints: List[Any]
     ) -> List[CheckConstraintInfo]:
         return [
             {

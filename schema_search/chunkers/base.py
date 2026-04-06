@@ -9,7 +9,7 @@ from schema_search.types import Chunk, TableSchema, DBSchema
 class BaseChunker(ABC):
     """Base class for schema chunkers."""
 
-    def __init__(self, max_tokens: int, overlap_tokens: int, show_progress: bool = False):
+    def __init__(self, max_tokens: int, overlap_tokens: int, show_progress: bool):
         self.max_tokens = max_tokens
         self.overlap_tokens = overlap_tokens
         self.show_progress = show_progress

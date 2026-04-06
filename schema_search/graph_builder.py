@@ -5,6 +5,7 @@ from typing import Set
 
 import networkx as nx
 
+from schema_search.constants import GRAPH_CACHE_FILENAME
 from schema_search.types import DBSchema
 
 logger = logging.getLogger(__name__)
@@ -21,7 +22,7 @@ class GraphBuilder:
         self.graph: nx.DiGraph = nx.DiGraph()
 
     def build(self, schemas: DBSchema, force: bool) -> None:
-        cache_file = self.cache_dir / "graph.pkl"
+        cache_file = self.cache_dir / GRAPH_CACHE_FILENAME
 
         if not force and cache_file.exists():
             if not self._load_from_cache(cache_file):
@@ -30,14 +31,15 @@ class GraphBuilder:
             self._build_and_cache(schemas, cache_file)
 
     def _load_from_cache(self, cache_file: Path) -> bool:
-        """Load graph from cache. Returns True on success, False on failure."""
+        """Load graph from cache. Returns True on success, False if cache is corrupt."""
         logger.debug(f"Loading graph from cache: {cache_file}")
         try:
             with open(cache_file, "rb") as f:
                 self.graph = pickle.load(f)
             return True
-        except Exception as e:
-            logger.warning(f"Failed to load graph cache: {e}")
+        except pickle.UnpicklingError as e:
+            logger.warning(f"Corrupt graph cache, deleting and rebuilding: {e}")
+            cache_file.unlink()
             return False
 
     def _build_and_cache(self, schemas: DBSchema, cache_file: Path) -> None:

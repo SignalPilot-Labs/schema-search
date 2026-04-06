@@ -5,6 +5,7 @@ Factory for creating renderers.
 from schema_search.renderers.base import BaseRenderer
 from schema_search.renderers.json import JsonRenderer
 from schema_search.renderers.markdown import MarkdownRenderer
+from schema_search.types import SearchResult
 
 
 def create_renderer(output_format: str) -> BaseRenderer:
@@ -26,3 +27,9 @@ def create_renderer(output_format: str) -> BaseRenderer:
         return MarkdownRenderer()
     else:
         raise ValueError(f"Unsupported output format: {output_format}")
+
+
+def render_search_result(result: SearchResult) -> str:
+    """Render a SearchResult using its configured output format."""
+    renderer = create_renderer(result.output_format)
+    return renderer.render(result)

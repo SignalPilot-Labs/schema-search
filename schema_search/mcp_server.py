@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 import logging
+import sys
 from typing import List, Optional
 
 from fastmcp import FastMCP
 
+from schema_search.constants import MCP_SERVER_NAME
+from schema_search.renderers.factory import render_search_result
 from schema_search.schema_search import SchemaSearch
 from schema_search.utils.utils import create_engine_from_url
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-mcp = FastMCP("schema-search")
+mcp = FastMCP(MCP_SERVER_NAME)
 
 
 @mcp.tool()
@@ -38,9 +41,10 @@ def schema_search(
         limit = int(mcp.search_engine.config["output"]["limit"])  # type: ignore
 
     search_result = mcp.search_engine.search(  # type: ignore
-        query, catalogs=catalogs, schemas=schemas, limit=limit
+        query, catalogs=catalogs, schemas=schemas, limit=limit,
+        hops=None, search_type=None, output_format=None
     )
-    return str(search_result)
+    return render_search_result(search_result)
 
 
 @mcp.tool()
@@ -68,7 +72,7 @@ def run_server(
     config_path: Optional[str] = None,
     llm_api_key: Optional[str] = None,
     llm_base_url: Optional[str] = None,
-):
+) -> None:
     engine = create_engine_from_url(database_url)
 
     mcp.search_engine = SchemaSearch(  # type: ignore
@@ -85,9 +89,7 @@ def run_server(
     mcp.run()
 
 
-def main():
-    import sys
-
+def main() -> None:
     if len(sys.argv) < 2:
         print(
             "Usage: schema-search <database_url> [config_path] [llm_api_key] [llm_base_url]"
