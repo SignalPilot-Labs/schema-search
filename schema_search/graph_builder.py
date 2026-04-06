@@ -5,6 +5,7 @@ from typing import Set
 
 import networkx as nx
 
+from schema_search.constants import CACHE_FILE_GRAPH
 from schema_search.types import DBSchema
 
 logger = logging.getLogger(__name__)
@@ -21,7 +22,7 @@ class GraphBuilder:
         self.graph: nx.DiGraph = nx.DiGraph()
 
     def build(self, schemas: DBSchema, force: bool) -> None:
-        cache_file = self.cache_dir / "graph.pkl"
+        cache_file = self.cache_dir / CACHE_FILE_GRAPH
 
         if not force and cache_file.exists():
             if not self._load_from_cache(cache_file):

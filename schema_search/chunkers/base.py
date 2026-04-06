@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 
 from tqdm import tqdm
 
+from schema_search.constants import TOKEN_ESTIMATION_DIVISOR
 from schema_search.types import Chunk, TableSchema, DBSchema
 
 
@@ -101,4 +102,4 @@ class BaseChunker(ABC):
         return chunks
 
     def _estimate_tokens(self, text: str) -> int:
-        return len(text.split()) + len(text) // 4
+        return len(text.split()) + len(text) // TOKEN_ESTIMATION_DIVISOR

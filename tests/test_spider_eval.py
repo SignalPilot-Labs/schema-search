@@ -7,10 +7,12 @@ comfortable wiping.
 """
 
 import re
+import shutil
 import time
 import json
+import yaml
 from collections import defaultdict
-from typing import List, Set, Dict, Any, TypedDict
+from typing import List, Set, Dict, TypedDict
 from pathlib import Path
 
 import numpy as np
@@ -210,8 +212,6 @@ def calculate_mrr(predicted: List[str], ground_truth: Set[str]) -> float:
 
 def save_benchmark_results(results_by_strategy, index_latencies, strategies):
     """Save benchmark results as JSON."""
-    import yaml
-
     config_path = Path(__file__).parent.parent / "config.yml"
     with open(config_path) as f:
         config = yaml.safe_load(f)
@@ -282,9 +282,6 @@ def cleanup_spider_databases():
 
     Only drops databases matching Spider naming pattern (alphanumeric + underscores).
     """
-    import shutil
-    from pathlib import Path
-
     admin_engine = create_engine(DATABASE_URL, isolation_level="AUTOCOMMIT")
 
     with admin_engine.connect() as conn:
@@ -443,14 +440,14 @@ def test_spider_evaluation(spider_data):
     if db_engine is not None:
         db_engine.dispose()
 
-    print(f"\n{'='*80}")
+    print("\n" + "=" * 80)
     print("FINAL RESULTS")
-    print(f"{'='*80}")
+    print("=" * 80)
 
     if index_latencies:
         mean_index = np.mean(index_latencies)
         std_index = np.std(index_latencies)
-        print(f"\nINDEXING")
+        print("\nINDEXING")
         print(f"  Databases indexed: {len(index_latencies)}")
         print(f"  Index latency: {mean_index:.3f}s ± {std_index:.3f}s")
 
