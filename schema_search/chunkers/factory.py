@@ -10,7 +10,7 @@ def create_chunker(
 ) -> BaseChunker:
     chunking_config = config["chunking"]
     strategy = chunking_config["strategy"]
-    show_progress = config["embedding"].get("show_progress", False)
+    show_progress = config["embedding"]["show_progress"]
 
     if strategy == "llm":
         return LLMChunker(

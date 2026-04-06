@@ -106,17 +106,11 @@ class SearchResultItem(TypedDict):
 
 @dataclass
 class SearchResult:
-    """Search result object with rendering capabilities."""
+    """Search result data container."""
 
     results: List[SearchResultItem]
     latency_sec: float
     output_format: str = field(default="markdown")
-
-    def __str__(self) -> str:
-        """Render results using configured format."""
-        from schema_search.renderers.factory import create_renderer
-        renderer = create_renderer(self.output_format)
-        return renderer.render(self)
 
     def to_dict(self) -> dict:
         """Convert to dictionary for backward compatibility."""

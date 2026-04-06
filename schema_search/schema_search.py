@@ -1,20 +1,24 @@
 import logging
+import time
 from pathlib import Path
 from typing import List, Optional
 
 from sqlalchemy.engine import Engine
 
 from schema_search.chunkers.factory import create_chunker
+from schema_search.embedding_cache.base import BaseEmbeddingCache
 from schema_search.embedding_cache.factory import create_embedding_cache
 from schema_search.embedding_cache.bm25 import BM25Cache
 from schema_search.extractors.factory import create_extractor
 from schema_search.graph_builder import GraphBuilder
+from schema_search.rankers.base import BaseRanker
 from schema_search.rankers.factory import create_ranker
+from schema_search.search.base import BaseSearchStrategy
 from schema_search.search.factory import create_search_strategy
 from schema_search.types import Chunk, DBSchema, IndexResult, SearchResult, SearchType
 from schema_search.utils.cache import load_chunks, load_schema, save_chunks, save_schema, schema_changed
 from schema_search.utils.config import load_config, validate_dependencies
-from schema_search.utils.utils import setup_logging, time_it
+from schema_search.utils.utils import setup_logging
 
 
 logger = logging.getLogger(__name__)
@@ -50,8 +54,8 @@ class SchemaSearch:
         self._reranker_config = self.config["reranker"]["model"]
         self._search_strategies = {}
 
-    @time_it
     def index(self, force: bool = False) -> IndexResult:
+        start = time.time()
         logger.info("Starting schema indexing" + (" (force)" if force else ""))
 
         current_schema = self.extractor.extract()
@@ -79,7 +83,7 @@ class SchemaSearch:
         return {
             "tables": table_count,
             "chunks": len(self.chunks),
-            "latency_sec": 0.0,
+            "latency_sec": round(time.time() - start, 3),
         }
 
     def _load_or_generate_chunks(self, force: bool) -> List[Chunk]:
@@ -93,43 +97,43 @@ class SchemaSearch:
         save_chunks(self.cache_dir, chunks)
         return chunks
 
-    def _get_embedding_cache(self):
+    def _get_embedding_cache(self) -> BaseEmbeddingCache:
         if self._embedding_cache is None:
             self._embedding_cache = create_embedding_cache(self.config, self.cache_dir)
         return self._embedding_cache
 
-    def _get_reranker(self):
+    def _get_reranker(self) -> Optional[BaseRanker]:
         if self._reranker is None and self._reranker_config:
             self._reranker = create_ranker(self.config)
         return self._reranker
 
     @property
-    def embedding_cache(self):
+    def embedding_cache(self) -> BaseEmbeddingCache:
         return self._get_embedding_cache()
 
     @property
-    def reranker(self):
+    def reranker(self) -> Optional[BaseRanker]:
         return self._get_reranker()
 
-    def _get_bm25_cache(self):
+    def _get_bm25_cache(self) -> BM25Cache:
         if self._bm25_cache is None:
             self._bm25_cache = BM25Cache()
         return self._bm25_cache
 
-    def _ensure_embeddings_loaded(self):
+    def _ensure_embeddings_loaded(self) -> None:
         cache = self._get_embedding_cache()
         if cache.embeddings is None:
             cache.load_or_generate(
                 self.chunks, self._index_force, self.config["chunking"]
             )
 
-    def _ensure_bm25_built(self):
+    def _ensure_bm25_built(self) -> None:
         cache = self._get_bm25_cache()
         if cache.bm25 is None:
             logger.info("Building BM25 index")
             cache.build(self.chunks)
 
-    def _get_search_strategy(self, search_type: str):
+    def _get_search_strategy(self, search_type: str) -> BaseSearchStrategy:
         if search_type not in self._search_strategies:
             self._search_strategies[search_type] = create_search_strategy(
                 self.config,
@@ -173,16 +177,29 @@ class SchemaSearch:
 
         return result
 
-    @time_it
+    def _resolve_search_params(
+        self,
+        hops: Optional[int],
+        limit: Optional[int],
+        search_type: Optional[SearchType],
+        output_format: Optional[str],
+    ) -> tuple[int, int, str, str]:
+        """Resolve None parameters from config defaults."""
+        resolved_hops = hops if hops is not None else int(self.config["search"]["hops"])
+        resolved_limit = limit if limit is not None else int(self.config["output"]["limit"])
+        resolved_format = output_format if output_format is not None else self.config["output"]["format"]
+        resolved_type = search_type if search_type is not None else self.config["search"]["strategy"]
+        return resolved_hops, resolved_limit, resolved_format, resolved_type
+
     def search(
         self,
         query: str,
-        catalogs: Optional[List[str]] = None,
-        schemas: Optional[List[str]] = None,
-        hops: Optional[int] = None,
-        limit: Optional[int] = None,
-        search_type: Optional[SearchType] = None,
-        output_format: Optional[str] = None,
+        catalogs: Optional[List[str]],
+        schemas: Optional[List[str]],
+        hops: Optional[int],
+        limit: Optional[int],
+        search_type: Optional[SearchType],
+        output_format: Optional[str],
     ) -> SearchResult:
         """Search for tables matching the query.
 
@@ -190,28 +207,25 @@ class SchemaSearch:
             query: Search query
             catalogs: Optional list of catalog names to search (Databricks only).
             schemas: Optional list of schema names to search.
-            hops: Graph traversal hops
-            limit: Max results
-            search_type: bm25, semantic, fuzzy, or hybrid
-            output_format: Output format (markdown or json)
+            hops: Graph traversal hops (or None for config default)
+            limit: Max results (or None for config default)
+            search_type: bm25, semantic, fuzzy, or hybrid (or None for config default)
+            output_format: Output format, markdown or json (or None for config default)
 
         Returns:
             SearchResult with matching tables
         """
+        start = time.time()
         if not self.chunks:
             raise ValueError("Must call index() before search()")
         if not query or not query.strip():
             raise ValueError("Query cannot be empty")
 
-        if hops is None:
-            hops = int(self.config["search"]["hops"])
-        if limit is None:
-            limit = int(self.config["output"]["limit"])
+        resolved_hops, resolved_limit, resolved_format, resolved_type = self._resolve_search_params(
+            hops, limit, search_type, output_format
+        )
 
-        resolved_format: str = output_format or self.config["output"]["format"]
-        resolved_type: str = search_type or self.config["search"]["strategy"]
-
-        logger.debug(f"Searching: {query} (catalogs={catalogs}, schemas={schemas}, hops={hops})")
+        logger.debug(f"Searching: {query} (catalogs={catalogs}, schemas={schemas}, hops={resolved_hops})")
 
         if resolved_type in ["semantic", "hybrid"]:
             self._ensure_embeddings_loaded()
@@ -226,8 +240,8 @@ class SchemaSearch:
             db_schema=self.schemas,
             chunks=self.chunks,
             graph_builder=self.graph_builder,
-            hops=hops,
-            limit=limit,
+            hops=resolved_hops,
+            limit=resolved_limit,
             catalogs=catalogs,
             schemas=schemas,
         )
@@ -236,6 +250,6 @@ class SchemaSearch:
 
         return SearchResult(
             results=results,
-            latency_sec=0.0,
-            output_format=resolved_format
+            latency_sec=round(time.time() - start, 3),
+            output_format=resolved_format,
         )

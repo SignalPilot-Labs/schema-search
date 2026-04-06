@@ -6,13 +6,14 @@ from schema_search.search.bm25 import BM25SearchStrategy
 from schema_search.search.hybrid import HybridSearchStrategy
 from schema_search.search.base import BaseSearchStrategy
 from schema_search.embedding_cache.base import BaseEmbeddingCache
+from schema_search.embedding_cache.bm25 import BM25Cache
 from schema_search.rankers.base import BaseRanker
 
 
 def create_search_strategy(
     config: Dict,
     get_embedding_cache: Callable[[], BaseEmbeddingCache],
-    get_bm25_cache: Callable,
+    get_bm25_cache: Callable[[], BM25Cache],
     get_reranker: Callable[[], Optional[BaseRanker]],
     strategy_type: Optional[str],
 ) -> BaseSearchStrategy:

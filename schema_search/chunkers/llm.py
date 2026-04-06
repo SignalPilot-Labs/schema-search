@@ -3,6 +3,7 @@ import logging
 from typing import Optional, TYPE_CHECKING
 
 from schema_search.chunkers.base import BaseChunker
+from schema_search.constants import LLM_SUMMARY_MAX_PROMPT_TOKENS, LLM_SUMMARY_MAX_RESPONSE_TOKENS
 from schema_search.types import TableSchema
 from schema_search.utils.utils import lazy_import_check
 
@@ -20,7 +21,7 @@ class LLMChunker(BaseChunker):
         model: str,
         llm_api_key: Optional[str],
         llm_base_url: Optional[str],
-        show_progress: bool = False,
+        show_progress: bool,
     ):
         super().__init__(max_tokens, overlap_tokens, show_progress)
         self.model = model
@@ -29,7 +30,7 @@ class LLMChunker(BaseChunker):
         logger.info(f"Schema Summarizer Model: {self.model}")
 
     def _generate_content(self, table_name: str, schema: TableSchema) -> str:
-        prompt = f"""Generate a concise 250 tokens or less semantic summary of this database table schema. Focus on:
+        prompt = f"""Generate a concise {LLM_SUMMARY_MAX_PROMPT_TOKENS} tokens or less semantic summary of this database table schema. Focus on:
 1. What entity or concept this table represents
 2. Key data it stores (main columns)
 3. How it relates to other tables
@@ -44,7 +45,7 @@ Return ONLY the summary text, no preamble."""
 
         response = self.llm_client.chat.completions.create(
             model=self.model,
-            max_tokens=500,
+            max_tokens=LLM_SUMMARY_MAX_RESPONSE_TOKENS,
             messages=[{"role": "user", "content": prompt}],
         )
 

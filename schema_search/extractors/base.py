@@ -5,33 +5,8 @@ from typing import Dict, Any
 
 from sqlalchemy.engine import Engine
 
+from schema_search.constants import SKIP_SCHEMAS
 from schema_search.types import DBSchema
-
-
-SKIP_SCHEMAS = {
-    # Standard
-    "information_schema",
-    # PostgreSQL
-    "pg_catalog",
-    "pg_toast",
-    "pg_temp_1",
-    "pg_toast_temp_1",
-    # MySQL
-    "mysql",
-    "performance_schema",
-    "sys",
-    # TimescaleDB
-    "timescaledb_information",
-    "timescaledb_experimental",
-    "_timescaledb_catalog",
-    "_timescaledb_config",
-    "_timescaledb_cache",
-    "_timescaledb_internal",
-    # Snowflake
-    "snowflake",
-    # Databricks
-    "default",
-}
 
 
 class BaseExtractor(ABC):

@@ -1,4 +1,8 @@
+from typing import Callable, Dict
+
 import numpy as np
+
+MetricFn = Callable[[np.ndarray, np.ndarray], np.ndarray]
 
 
 def cosine_similarity(a: np.ndarray, b: np.ndarray) -> np.ndarray:
@@ -19,7 +23,7 @@ def manhattan_distance(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return -np.sum(np.abs(a[:, None] - b[None, :]), axis=-1)
 
 
-METRICS = {
+METRICS: Dict[str, MetricFn] = {
     "cosine": cosine_similarity,
     "dot": dot_product,
     "euclidean": euclidean_distance,
@@ -27,7 +31,7 @@ METRICS = {
 }
 
 
-def get_metric(name: str):
+def get_metric(name: str) -> MetricFn:
     if name not in METRICS:
         raise ValueError(f"Unknown metric: {name}. Available: {list(METRICS.keys())}")
     return METRICS[name]

@@ -2,35 +2,15 @@
 
 import logging
 import os
-import time
-from functools import wraps
 from importlib import import_module
 from typing import Any, Dict
 from urllib.parse import parse_qs, urlparse, urlunparse
 
 from sqlalchemy import Engine, create_engine
 
-from schema_search.types import SearchResult
+from schema_search.constants import DATABRICKS_USER_AGENT
 
 logger = logging.getLogger(__name__)
-
-
-def time_it(func):
-    """Decorator to measure function execution time."""
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        start = time.time()
-        result = func(*args, **kwargs)
-        elapsed = time.time() - start
-
-        if isinstance(result, dict):
-            result["latency_sec"] = round(elapsed, 3)
-        elif isinstance(result, SearchResult):
-            result.latency_sec = round(elapsed, 3)
-
-        return result
-
-    return wrapper
 
 
 def lazy_import_check(module_name: str, extra_name: str, feature: str) -> Any:
@@ -151,7 +131,7 @@ def _create_databricks_engine(url: str) -> Engine:
     Returns:
         SQLAlchemy Engine configured for Databricks.
     """
-    return create_engine(url, connect_args={"user_agent_entry": "schema-search"})
+    return create_engine(url, connect_args={"user_agent_entry": DATABRICKS_USER_AGENT})
 
 
 def create_engine_from_url(url: str) -> Engine:

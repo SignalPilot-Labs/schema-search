@@ -6,7 +6,7 @@ from schema_search.types import Chunk
 
 
 class BaseRanker(ABC):
-    def __init__(self):
+    def __init__(self) -> None:
         self.chunks: List[Chunk]
 
     @abstractmethod

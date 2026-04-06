@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 from typing import List, Optional
 
+from schema_search.constants import SCHEMA_CACHE_FILENAME, CHUNK_CACHE_FILENAME
 from schema_search.types import Chunk, DBSchema
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,7 @@ def load_schema(cache_dir: Path) -> Optional[DBSchema]:
     Returns:
         Cached schema or None if not found.
     """
-    schema_cache = cache_dir / "metadata.json"
+    schema_cache = cache_dir / SCHEMA_CACHE_FILENAME
 
     if not schema_cache.exists():
         logger.debug("Schema cache missing")
@@ -36,7 +37,7 @@ def save_schema(cache_dir: Path, schema: DBSchema) -> None:
         cache_dir: Directory for cache files.
         schema: Schema to save.
     """
-    schema_cache = cache_dir / "metadata.json"
+    schema_cache = cache_dir / SCHEMA_CACHE_FILENAME
     with open(schema_cache, "w") as f:
         json.dump(schema, f, indent=2)
 
@@ -69,7 +70,7 @@ def load_chunks(cache_dir: Path) -> Optional[List[Chunk]]:
     Returns:
         List of chunks or None if not found or incompatible.
     """
-    chunks_cache = cache_dir / "chunk_metadata.json"
+    chunks_cache = cache_dir / CHUNK_CACHE_FILENAME
 
     if not chunks_cache.exists():
         return None
@@ -78,19 +79,20 @@ def load_chunks(cache_dir: Path) -> Optional[List[Chunk]]:
     try:
         with open(chunks_cache) as f:
             chunk_data = json.load(f)
-            return [
-                Chunk(
-                    catalog=c.get("catalog"),
-                    schema_name=c["schema_name"],
-                    table_name=c["table_name"],
-                    content=c["content"],
-                    chunk_id=c["chunk_id"],
-                    token_count=c["token_count"],
-                )
-                for c in chunk_data
-            ]
-    except Exception as e:
-        logger.warning(f"Failed to load chunks cache: {e}")
+        return [
+            Chunk(
+                catalog=c.get("catalog"),
+                schema_name=c["schema_name"],
+                table_name=c["table_name"],
+                content=c["content"],
+                chunk_id=c["chunk_id"],
+                token_count=c["token_count"],
+            )
+            for c in chunk_data
+        ]
+    except (json.JSONDecodeError, KeyError) as e:
+        logger.warning(f"Corrupt chunk cache, deleting and rebuilding: {e}")
+        chunks_cache.unlink()
         return None
 
 
@@ -101,7 +103,7 @@ def save_chunks(cache_dir: Path, chunks: List[Chunk]) -> None:
         cache_dir: Directory for cache files.
         chunks: Chunks to save.
     """
-    chunks_cache = cache_dir / "chunk_metadata.json"
+    chunks_cache = cache_dir / CHUNK_CACHE_FILENAME
     with open(chunks_cache, "w") as f:
         chunk_data = [
             {
