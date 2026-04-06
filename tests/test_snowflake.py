@@ -1,4 +1,5 @@
 import os
+import traceback
 from pathlib import Path
 
 import pytest
@@ -43,8 +44,6 @@ def test_snowflake_basic_query(snowflake_engine: Engine) -> None:
         print("✓ Basic query works")
     except Exception as e:
         print(f"✗ Error: {e}")
-        import traceback
-
         traceback.print_exc()
         raise
 

@@ -3,6 +3,7 @@ import logging
 from typing import Optional, TYPE_CHECKING
 
 from schema_search.chunkers.base import BaseChunker
+from schema_search.constants import DEBUG_TRUNCATION_LENGTH, LLM_MAX_TOKENS
 from schema_search.types import TableSchema
 from schema_search.utils.utils import lazy_import_check
 
@@ -44,11 +45,11 @@ Return ONLY the summary text, no preamble."""
 
         response = self.llm_client.chat.completions.create(
             model=self.model,
-            max_tokens=500,
+            max_tokens=LLM_MAX_TOKENS,
             messages=[{"role": "user", "content": prompt}],
         )
 
         summary = response.choices[0].message.content.strip()  # type: ignore
-        logger.debug(f"Generated LLM summary for {table_name}: {summary[:100]}...")
+        logger.debug(f"Generated LLM summary for {table_name}: {summary[:DEBUG_TRUNCATION_LENGTH]}...")
 
         return f"Table: {table_name}\n{summary}"

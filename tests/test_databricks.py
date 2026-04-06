@@ -1,4 +1,5 @@
 import os
+import traceback
 from pathlib import Path
 
 import pytest
@@ -43,8 +44,6 @@ def test_databricks_basic_query(databricks_engine):
         print("✓ Basic query works")
     except Exception as e:
         print(f"✗ Error: {e}")
-        import traceback
-
         traceback.print_exc()
         raise
 

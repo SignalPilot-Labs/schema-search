@@ -5,6 +5,7 @@ from typing import Dict, List, Tuple
 
 from sqlalchemy import text
 
+from schema_search.constants import NULLABLE_YES, SKIP_CATALOG_SYSTEM
 from schema_search.extractors.base import BaseExtractor
 from schema_search.types import DBSchema, ColumnInfo, ForeignKeyInfo
 
@@ -12,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 TableKey = Tuple[str, str, str]  # (catalog, schema, table)
 
-SKIP_CATALOGS = {"system"}  # system catalog is not a user schema
+SKIP_CATALOGS = {SKIP_CATALOG_SYSTEM}  # system catalog is not a user schema
 
 
 class DatabricksExtractor(BaseExtractor):
@@ -113,7 +114,7 @@ class DatabricksExtractor(BaseExtractor):
                         {
                             "name": row[2],
                             "type": row[3],
-                            "nullable": row[4] == "YES",
+                            "nullable": row[4] == NULLABLE_YES,
                             "default": row[5],
                         }
                     )

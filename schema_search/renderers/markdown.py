@@ -2,7 +2,7 @@
 Markdown renderer for search results.
 """
 
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING
 
 from schema_search.renderers.base import BaseRenderer
 from schema_search.types import TableSchema, ColumnInfo, SearchResultItem

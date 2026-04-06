@@ -2,6 +2,7 @@ from typing import List, Optional, Tuple
 
 from rapidfuzz import fuzz
 
+from schema_search.constants import FUZZY_NORMALIZATION, FUZZY_SCORE_CUTOFF
 from schema_search.search.base import BaseSearchStrategy
 from schema_search.types import Chunk, DBSchema, TableSchema, SearchResultItem
 from schema_search.graph_builder import GraphBuilder, make_table_key
@@ -28,7 +29,7 @@ class FuzzySearchStrategy(BaseSearchStrategy):
         for schema_name, tables in db_schema.items():
             for table_name, table_schema in tables.items():
                 searchable_text = self._build_searchable_text(table_name, table_schema)
-                score = fuzz.ratio(query, searchable_text, score_cutoff=0) / 100.0
+                score = fuzz.ratio(query, searchable_text, score_cutoff=FUZZY_SCORE_CUTOFF) / FUZZY_NORMALIZATION
                 scored_tables.append((schema_name, table_name, score))
 
         scored_tables.sort(key=lambda x: x[2], reverse=True)

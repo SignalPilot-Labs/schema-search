@@ -5,20 +5,24 @@ import os
 import time
 from functools import wraps
 from importlib import import_module
-from typing import Any, Dict
+from typing import Any, Callable, Dict, ParamSpec, TypeVar
 from urllib.parse import parse_qs, urlparse, urlunparse
 
 from sqlalchemy import Engine, create_engine
 
+from schema_search.constants import APP_NAME, DIALECT_DATABRICKS, DIALECT_SNOWFLAKE
 from schema_search.types import SearchResult
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 logger = logging.getLogger(__name__)
 
 
-def time_it(func):
+def time_it(func: Callable[P, R]) -> Callable[P, R]:
     """Decorator to measure function execution time."""
     @wraps(func)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
         start = time.time()
         result = func(*args, **kwargs)
         elapsed = time.time() - start
@@ -30,7 +34,7 @@ def time_it(func):
 
         return result
 
-    return wrapper
+    return wrapper  # type: ignore[return-value]
 
 
 def lazy_import_check(module_name: str, extra_name: str, feature: str) -> Any:
@@ -151,7 +155,7 @@ def _create_databricks_engine(url: str) -> Engine:
     Returns:
         SQLAlchemy Engine configured for Databricks.
     """
-    return create_engine(url, connect_args={"user_agent_entry": "schema-search"})
+    return create_engine(url, connect_args={"user_agent_entry": APP_NAME})
 
 
 def create_engine_from_url(url: str) -> Engine:
@@ -171,9 +175,9 @@ def create_engine_from_url(url: str) -> Engine:
     parsed = urlparse(url)
     dialect = parsed.scheme.split("+")[0]
 
-    if dialect == "snowflake":
+    if dialect == DIALECT_SNOWFLAKE:
         return _create_snowflake_engine(url)
-    elif dialect == "databricks":
+    elif dialect == DIALECT_DATABRICKS:
         return _create_databricks_engine(url)
     else:
         return create_engine(url)
